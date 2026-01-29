@@ -1,32 +1,52 @@
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from transformers import pipeline
 import pandas as pd
 
 class Analyzer:
-    _vader_analyzer = None
+    _sentiment_pipeline = None
 
     @classmethod
     def get_analyzer(cls):
         """
-        Lazy-loads the VADER sentiment analyzer.
+        Lazy-loads the TinyBERT sentiment analysis pipeline.
         """
-        if cls._vader_analyzer is None:
-            cls._vader_analyzer = SentimentIntensityAnalyzer()
-        return cls._vader_analyzer
+        if cls._sentiment_pipeline is None:
+            # Using the specific model requested by user
+            # Note: This is a base model. Without fine-tuning, results might be uncalibrated.
+            # However, transformers pipeline might use default head initialization.
+            cls._sentiment_pipeline = pipeline(
+                "text-classification", 
+                model="huawei-noah/TinyBERT_General_4L_312D",
+                truncation=True,
+                max_length=512
+            )
+        return cls._sentiment_pipeline
 
     @staticmethod
     def analyze_sentiment(text: str) -> float:
         """
         Returns a sentiment polarity score between -1.0 (negative) and 1.0 (positive).
-        Uses VADER for fast, rule-based sentiment analysis.
+        Uses TinyBERT model.
         """
         if not text or len(text.strip()) == 0:
             return 0.0
             
         try:
             analyzer = Analyzer.get_analyzer()
-            # Returns dict with neg, neu, pos, compound
-            scores = analyzer.polarity_scores(text)
-            return float(scores['compound'])
+            # Run inference
+            result = analyzer(text)[0]
+            # Result format: {'label': 'LABEL_0'/'LABEL_1', 'score': float}
+            
+            label = result['label']
+            score = result['score']
+            
+            # Map standard binary classification labels to polarity
+            # LABEL_0 is typically Negative, LABEL_1 is Positive in standard BERT fine-tuning
+            if label in ['POSITIVE', 'LABEL_1']:
+                return score
+            elif label in ['NEGATIVE', 'LABEL_0']:
+                return -score
+            else:
+                return 0.0
         except Exception as e:
             print(f"Sentiment analysis error: {e}")
             return 0.0
