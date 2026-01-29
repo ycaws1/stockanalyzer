@@ -1,52 +1,68 @@
-from transformers import pipeline
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import pandas as pd
 
 class Analyzer:
-    _sentiment_pipeline = None
+    _vader_analyzer = None
+    
+    # Financial sentiment keywords
+    POSITIVE_KEYWORDS = {
+        'beat', 'beats', 'surge', 'surges', 'gain', 'gains', 'rise', 'rises', 'rising',
+        'growth', 'profit', 'profits', 'up', 'high', 'higher', 'bullish', 'buy',
+        'upgrade', 'upgrades', 'outperform', 'record', 'strong', 'positive',
+        'boost', 'boosts', 'rally', 'rallies', 'soar', 'soars', 'jump', 'jumps',
+        'exceed', 'exceeds', 'exceeded', 'breakout', 'momentum'
+    }
+    
+    NEGATIVE_KEYWORDS = {
+        'miss', 'misses', 'fall', 'falls', 'drop', 'drops', 'decline', 'declines',
+        'loss', 'losses', 'down', 'low', 'lower', 'bearish', 'sell',
+        'downgrade', 'downgrades', 'underperform', 'weak', 'negative',
+        'crash', 'crashes', 'plunge', 'plunges', 'sink', 'sinks', 'slump',
+        'warning', 'warns', 'cut', 'cuts', 'layoff', 'layoffs', 'bankruptcy'
+    }
 
     @classmethod
     def get_analyzer(cls):
         """
-        Lazy-loads the TinyBERT sentiment analysis pipeline.
+        Lazy-loads the VADER sentiment analyzer.
         """
-        if cls._sentiment_pipeline is None:
-            # Using the specific model requested by user
-            # Note: This is a base model. Without fine-tuning, results might be uncalibrated.
-            # However, transformers pipeline might use default head initialization.
-            cls._sentiment_pipeline = pipeline(
-                "text-classification", 
-                model="huawei-noah/TinyBERT_General_4L_312D",
-                truncation=True,
-                max_length=512
-            )
-        return cls._sentiment_pipeline
+        if cls._vader_analyzer is None:
+            cls._vader_analyzer = SentimentIntensityAnalyzer()
+        return cls._vader_analyzer
 
     @staticmethod
     def analyze_sentiment(text: str) -> float:
         """
         Returns a sentiment polarity score between -1.0 (negative) and 1.0 (positive).
-        Uses TinyBERT model.
+        Combines VADER sentiment with financial keyword matching.
         """
         if not text or len(text.strip()) == 0:
             return 0.0
             
         try:
             analyzer = Analyzer.get_analyzer()
-            # Run inference
-            result = analyzer(text)[0]
-            # Result format: {'label': 'LABEL_0'/'LABEL_1', 'score': float}
+            # Get VADER compound score (-1 to 1)
+            scores = analyzer.polarity_scores(text)
+            vader_score = float(scores['compound'])
             
-            label = result['label']
-            score = result['score']
+            # Keyword-based adjustment for financial context
+            text_lower = text.lower()
+            words = set(text_lower.split())
             
-            # Map standard binary classification labels to polarity
-            # LABEL_0 is typically Negative, LABEL_1 is Positive in standard BERT fine-tuning
-            if label in ['POSITIVE', 'LABEL_1']:
-                return score
-            elif label in ['NEGATIVE', 'LABEL_0']:
-                return -score
-            else:
-                return 0.0
+            keyword_score = 0.0
+            pos_matches = words.intersection(Analyzer.POSITIVE_KEYWORDS)
+            neg_matches = words.intersection(Analyzer.NEGATIVE_KEYWORDS)
+            
+            # Each keyword contributes a small bonus/penalty
+            keyword_score += len(pos_matches) * 0.15
+            keyword_score -= len(neg_matches) * 0.15
+            
+            # Combine: VADER (70%) + Keywords (30%)
+            combined_score = (vader_score * 0.7) + (keyword_score * 0.3)
+            
+            # Clamp to valid range
+            return max(-1.0, min(1.0, combined_score))
+            
         except Exception as e:
             print(f"Sentiment analysis error: {e}")
             return 0.0
