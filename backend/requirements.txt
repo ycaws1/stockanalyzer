@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+yfinance
+textblob
+pandas
+python-dotenv
+vaderSentiment
+greenlet
