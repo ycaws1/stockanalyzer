@@ -26,6 +26,34 @@ export default function TradeSimulator() {
     const [liveInitialCapital] = useState(10000);
     const [livePerformance, setLivePerformance] = useState<any>(null);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [watchlist, setWatchlist] = useState<string[]>([]);
+    const [loadingWatchlist, setLoadingWatchlist] = useState(true);
+
+    // Fetch watchlist on mount
+    useEffect(() => {
+        const fetchWatchlist = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/stocks/`);
+                if (!res.ok) throw new Error('Failed to fetch watchlist');
+                const data = await res.json();
+                const tickers = data.map((item: any) => item.ticker);
+                setWatchlist(tickers);
+
+                // If current ticker is not in watchlist and watchlist is not empty, set it to the first one
+                setTicker(prev => {
+                    if (tickers.length > 0 && !tickers.includes(prev)) {
+                        return tickers[0];
+                    }
+                    return prev;
+                });
+            } catch (e) {
+                console.error("Failed to fetch watchlist:", e);
+            } finally {
+                setLoadingWatchlist(false);
+            }
+        };
+        fetchWatchlist();
+    }, []);
 
     // Load state from localStorage on mount (Client-side only)
     useEffect(() => {
@@ -344,7 +372,27 @@ export default function TradeSimulator() {
                     {/* Strategy Config */}
                     <div className={styles.formGroup}>
                         <label>Ticker to Backtest</label>
-                        <input value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} />
+                        <select
+                            value={ticker}
+                            onChange={(e) => setTicker(e.target.value)}
+                            className={styles.select}
+                            disabled={loadingWatchlist || watchlist.length === 0}
+                        >
+                            {loadingWatchlist ? (
+                                <option>Loading...</option>
+                            ) : watchlist.length === 0 ? (
+                                <option>Add tickers to watchlist first</option>
+                            ) : (
+                                watchlist.map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                ))
+                            )}
+                        </select>
+                        {watchlist.length === 0 && !loadingWatchlist && (
+                            <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '4px' }}>
+                                No tickers found in watchlist. Add some in Market Overview.
+                            </p>
+                        )}
                     </div>
 
                     <div className={styles.configGrid}>
