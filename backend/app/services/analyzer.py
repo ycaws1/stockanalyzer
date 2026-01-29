@@ -236,7 +236,7 @@ class Analyzer:
     def calculate_composite_score(prices_data: list, avg_sentiment: float, company_info: dict) -> dict:
         """
         Calculate composite score combining technical, sentiment, and financial factors.
-        Weights: Technical 40%, Sentiment 30%, Financial 30%
+        Weights: Technical 40%, Financial 40%, Sentiment 20%
         """
         technical = Analyzer.calculate_technical_score(prices_data)
         sentiment = Analyzer.calculate_sentiment_score(avg_sentiment)
@@ -245,8 +245,8 @@ class Analyzer:
         # Weighted composite score
         composite_score = round(
             (technical['score'] * 0.40) +
-            (sentiment['score'] * 0.30) +
-            (financial['score'] * 0.30)
+            (financial['score'] * 0.40) +
+            (sentiment['score'] * 0.20)
         )
         
         return {
@@ -256,7 +256,7 @@ class Analyzer:
             "financial": financial,
             "weights": {
                 "technical": 0.40,
-                "sentiment": 0.30,
-                "financial": 0.30
+                "financial": 0.40,
+                "sentiment": 0.20
             }
         }

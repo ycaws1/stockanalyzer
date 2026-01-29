@@ -5,12 +5,11 @@
 The stock analyzer now uses a **Composite Score** system that combines multiple data sources to provide a more comprehensive assessment of each stock. Instead of relying solely on sentiment analysis, the score now integrates:
 
 1. **Technical Analysis** (40% weight)
-2. **Sentiment Analysis** (30% weight)
-3. **Financial Metrics** (30% weight)
+2. **Financial Metrics** (40% weight)
+3. **Sentiment Analysis** (20% weight)
 
-**Final Score Formula:**
 ```
-Composite Score = (0.40 × Technical) + (0.30 × Sentiment) + (0.30 × Financial)
+Composite Score = (0.40 × Technical) + (0.40 × Financial) + (0.20 × Sentiment)
 ```
 
 ---
@@ -44,7 +43,7 @@ Analyzes price action and momentum using technical indicators.
 
 ---
 
-### 2. Sentiment Score (30% weight)
+### 2. Sentiment Score (20% weight)
 
 Analyzes news sentiment using AI (TextBlob NLP).
 
@@ -68,7 +67,7 @@ score = (average_sentiment + 1) * 50
 
 ---
 
-### 3. Financial Score (30% weight)
+### 3. Financial Score (40% weight)
 
 Analyzes fundamental business metrics.
 
@@ -129,9 +128,9 @@ Higher = faster growing
 
 #### Final Composite Score:
 ```
-= (52.4 × 0.40) + (66 × 0.30) + (78.75 × 0.30)
-= 20.96 + 19.8 + 23.63
-= 64.39 ≈ 64/100
+= (52.4 × 0.40) + (78.75 × 0.40) + (66 × 0.20)
+= 20.96 + 31.50 + 13.20
+= 65.66 ≈ 66/100
 ```
 
 **Interpretation:** Moderately bullish - strong financials, positive sentiment, but neutral technical indicators.
@@ -142,7 +141,7 @@ Higher = faster growing
 
 ### Collapsed View
 - Shows composite score with **ⓘ** tooltip
-- Tooltip explains: "Composite Score: Technical Analysis (40%), AI Sentiment (30%), Financial Metrics (30%)"
+- Tooltip explains: "Composite Score: Technical Analysis (40%), Financial Metrics (40%), AI Sentiment (20%)"
 
 ### Expanded View
 Clicking the card shows detailed breakdown:
@@ -170,8 +169,8 @@ Score Breakdown:
     "composite_score": 64,
     "weights": {
       "technical": 0.40,
-      "sentiment": 0.30,
-      "financial": 0.30
+      "financial": 0.40,
+      "sentiment": 0.20
     },
     "technical": {
       "score": 52,
@@ -319,9 +318,9 @@ Monitor score changes and correlate with actual stock performance.
 ## Summary
 
 The **Composite Score** provides a holistic view by combining:
-- **What the chart says** (Technical)
-- **What people say** (Sentiment)
-- **What the business shows** (Financial)
+- **What the chart says** (Technical - 40%)
+- **What the business shows** (Financial - 40%)
+- **What people say** (Sentiment - 20%)
 
 This multi-dimensional approach helps identify opportunities that pure sentiment or technical analysis might miss.
 

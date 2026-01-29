@@ -104,7 +104,7 @@ export default function StockCard({ data, forceExpanded }: StockCardProps) {
                         title={
                             data.scoreBreakdown
                                 ? `Composite Score (${data.score}/100) - ${getScoreLabel(data.score)}\n\n📈 Technical: ${data.scoreBreakdown.technical}/100 (${getScoreLabel(data.scoreBreakdown.technical)})\n💰 Financial: ${data.scoreBreakdown.financial}/100 (${getScoreLabel(data.scoreBreakdown.financial)})\n💭 Sentiment: ${data.scoreBreakdown.sentiment}/100 (${getScoreLabel(data.scoreBreakdown.sentiment)})\n\nClick card for details`
-                                : `Composite Score: ${data.score}/100\n\nFetching latest scores...\n(Technical: 40%, Financial: 30%, Sentiment: 30%)\n\nPlease wait a moment for analysis to complete.`
+                                : `Composite Score: ${data.score}/100\n\nFetching latest scores...\n(Technical: 40%, Financial: 40%, Sentiment: 20%)\n\nPlease wait a moment for analysis to complete.`
                         }
                         style={{
                             cursor: 'help',
