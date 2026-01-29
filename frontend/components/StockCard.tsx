@@ -26,6 +26,7 @@ interface StockCardProps {
     data: StockData;
     forceExpanded?: boolean;
 }
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function StockCard({ data, forceExpanded }: StockCardProps) {
     const isPositive = data.changePercent >= 0;
@@ -49,7 +50,7 @@ export default function StockCard({ data, forceExpanded }: StockCardProps) {
             setLoadingHistory(true);
             try {
                 // Fetch 5d hourly data
-                const res = await fetch(`http://localhost:8000/stocks/${data.ticker}/history?period=5d&interval=1h`);
+                const res = await fetch(`${API_BASE}/stocks/${data.ticker}/history?period=5d&interval=1h`);
                 if (res.ok) {
                     const histData = await res.json();
                     setHistory(histData);

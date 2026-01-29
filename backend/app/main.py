@@ -8,6 +8,7 @@ import asyncio
 from .services.cache_manager import CacheManager
 from .database import engine
 from sqlalchemy import text
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,7 +30,8 @@ async def lifespan(app: FastAPI):
                 print(f"Migration warning: {e}")
 
     # Start Background Task
-    task = asyncio.create_task(CacheManager.start_scheduler(interval_minutes=5))
+    interval_minutes = os.getenv('CACHE_INTERVAL_MINUTES', 5)
+    task = asyncio.create_task(CacheManager.start_scheduler(interval_minutes=interval_minutes))
     
     yield
     
@@ -39,9 +41,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Stock Analyzer API", lifespan=lifespan)
 
 # Configure CORS
+cors_origins = os.getenv('CORS_ORIGINS', "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=cors_origins,  # Adjust in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

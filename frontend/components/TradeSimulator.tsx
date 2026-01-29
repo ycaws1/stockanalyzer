@@ -3,6 +3,7 @@ import styles from './TradeSimulator.module.css';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot
 } from 'recharts';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function TradeSimulator() {
     const [ticker, setTicker] = useState('NVDA');
@@ -183,7 +184,7 @@ export default function TradeSimulator() {
     const runBacktest = async () => {
         setLoadingBacktest(true);
         try {
-            const res = await fetch(`http://localhost:8000/backtest/`, {
+            const res = await fetch(`${API_BASE}/backtest/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -207,7 +208,7 @@ export default function TradeSimulator() {
     const startLiveSimulation = async () => {
         setLoadingLiveSignal(true);
         try {
-            const res = await fetch(`http://localhost:8000/live_trade/start`, {
+            const res = await fetch(`${API_BASE}/live_trade/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -236,7 +237,7 @@ export default function TradeSimulator() {
         if (!liveMode) return;
         setLoadingLiveSignal(true);
         try {
-            const res = await fetch(`http://localhost:8000/live_trade/start`, {
+            const res = await fetch(`${API_BASE}/live_trade/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

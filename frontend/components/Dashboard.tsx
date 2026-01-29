@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import StockCard from './StockCard';
 import styles from './Dashboard.module.css';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export default function Dashboard() {
     const [stocks, setStocks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -14,7 +16,7 @@ export default function Dashboard() {
 
     const fetchWatchlist = async () => {
         try {
-            const res = await fetch('http://localhost:8000/stocks/');
+            const res = await fetch(`${API_BASE}/stocks/`);
             if (!res.ok) throw new Error('Failed to fetch watchlist');
             const watchlist = await res.json();
             return watchlist.map((item: any) => item.ticker);
@@ -34,13 +36,13 @@ export default function Dashboard() {
 
         const promises = tickers.map(async (ticker) => {
             try {
-                const res = await fetch(`http://localhost:8000/stocks/${ticker}/analysis`);
+                const res = await fetch(`${API_BASE}/stocks/${ticker}/analysis`);
                 if (!res.ok) throw new Error(`Failed to fetch ${ticker}`);
                 const data = await res.json();
 
                 // Map backend response to frontend format
                 // Fetch history for sparkline/price
-                const historyRes = await fetch(`http://localhost:8000/stocks/${ticker}/history?period=5d`);
+                const historyRes = await fetch(`${API_BASE}/stocks/${ticker}/history?period=5d`);
                 const history = await historyRes.ok ? await historyRes.json() : [];
                 const latest = history.length > 0 ? history[history.length - 1] : { close: 0, volume: 0 };
                 const prev = history.length > 1 ? history[history.length - 2] : null;
@@ -97,7 +99,7 @@ export default function Dashboard() {
         if (!newTicker) return;
         setAdding(true);
         try {
-            const res = await fetch(`http://localhost:8000/stocks/?ticker=${newTicker}`, { method: 'POST' });
+            const res = await fetch(`${API_BASE}/stocks/?ticker=${newTicker}`, { method: 'POST' });
             if (res.ok) {
                 setNewTicker('');
                 loadData(); // Reload all
@@ -114,7 +116,7 @@ export default function Dashboard() {
     const handleRemoveStock = async (ticker: string) => {
         if (!confirm(`Remove ${ticker} from watchlist?`)) return;
         try {
-            await fetch(`http://localhost:8000/stocks/${ticker}`, { method: 'DELETE' });
+            await fetch(`${API_BASE}/stocks/${ticker}`, { method: 'DELETE' });
             setStocks(prev => prev.filter(s => s.ticker !== ticker));
         } catch (e) {
             alert('Failed to remove stock');
