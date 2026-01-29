@@ -11,7 +11,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [newTicker, setNewTicker] = useState('');
     const [adding, setAdding] = useState(false);
-    const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment'>('change');
+    const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('change');
     const [allExpanded, setAllExpanded] = useState<boolean | undefined>(undefined);
 
     const fetchWatchlist = async () => {
@@ -143,6 +143,8 @@ export default function Dashboard() {
             case 'change':
                 return sorted.sort((a, b) => b.changePercent - a.changePercent);
             case 'sentiment':
+                return sorted.sort((a, b) => (b.scoreBreakdown?.sentiment || 0) - (a.scoreBreakdown?.sentiment || 0));
+            case 'composite':
                 return sorted.sort((a, b) => b.score - a.score);
             default:
                 return sorted;
@@ -195,6 +197,7 @@ export default function Dashboard() {
                             <option value="marketCap">Market Cap</option>
                             <option value="change">Daily Change %</option>
                             <option value="sentiment">Sentiment Score</option>
+                            <option value="composite">Composite Score</option>
                         </select>
 
                         {/* Add Stock */}
