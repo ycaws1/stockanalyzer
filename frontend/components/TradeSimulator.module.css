@@ -15,6 +15,7 @@
     margin-bottom: 0.5rem;
     background: linear-gradient(to right, #fff, #bbb);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -282,4 +283,33 @@
 .chartContainer h4 {
     margin-bottom: 1rem;
     color: var(--text-muted);
+}
+
+/* Responsive Overrides */
+@media (max-width: 600px) {
+    .simulator {
+        padding: 1.5rem 1rem;
+    }
+
+    .configGrid,
+    .metricsGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .amount {
+        font-size: 2rem;
+    }
+
+    .metric {
+        padding: 1rem;
+    }
+
+    .tradeForm {
+        padding: 1rem;
+    }
+
+    .formGroup input,
+    .select {
+        padding: 0.75rem;
+    }
 }
