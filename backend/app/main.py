@@ -29,10 +29,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Stock Analyzer API", lifespan=lifespan)
 
 # Configure CORS
-cors_origins = os.getenv('CORS_ORIGINS', "*").split(",")
+cors_origins_raw = os.getenv('CORS_ORIGINS', "*")
+cors_origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,  # Adjust in production
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

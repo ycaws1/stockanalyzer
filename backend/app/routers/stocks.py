@@ -34,9 +34,8 @@ async def add_stock(ticker: str, db: AsyncSession = Depends(get_db)):
     try:
         info = await DataCollector.fetch_company_info(ticker)
         # Check if info is valid (some tickers might return None/Empty)
-        if not info or not info.get('name'):
-             # Fallback or allow minimal add
-             pass
+        if not info:
+             info = {}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid ticker: {e}")
 

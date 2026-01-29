@@ -99,15 +99,20 @@ export default function Dashboard() {
         if (!newTicker) return;
         setAdding(true);
         try {
-            const res = await fetch(`${API_BASE}/stocks/?ticker=${newTicker}`, { method: 'POST' });
+            const url = `${API_BASE}/stocks/?ticker=${encodeURIComponent(newTicker.trim().toUpperCase())}`;
+            const res = await fetch(url, { method: 'POST' });
+
             if (res.ok) {
                 setNewTicker('');
                 loadData(); // Reload all
             } else {
-                alert('Failed to add stock. Check ticker.');
+                const errorData = await res.json().catch(() => ({}));
+                console.error('Server returned error:', res.status, errorData);
+                alert(`Failed to add stock: ${errorData.detail || 'Check ticker symbol'}`);
             }
-        } catch (e) {
-            alert('Error adding stock');
+        } catch (e: any) {
+            console.error('Network or CORS error adding stock:', e);
+            alert(`Error adding stock: ${e.message || 'Check connection/CORS'}`);
         } finally {
             setAdding(false);
         }
