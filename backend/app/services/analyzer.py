@@ -1,48 +1,32 @@
-from transformers import pipeline
-import torch
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import pandas as pd
 
 class Analyzer:
-    _sentiment_pipeline = None
+    _vader_analyzer = None
 
     @classmethod
-    def get_pipeline(cls):
+    def get_analyzer(cls):
         """
-        Lazy-loads the DistilRoBERTa sentiment analysis pipeline.
+        Lazy-loads the VADER sentiment analyzer.
         """
-        if cls._sentiment_pipeline is None:
-            # Using DistilRoBERTa - smaller and faster than base BERT
-            cls._sentiment_pipeline = pipeline(
-                "sentiment-analysis", 
-                model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis",
-                device=-1 
-            )
-        return cls._sentiment_pipeline
+        if cls._vader_analyzer is None:
+            cls._vader_analyzer = SentimentIntensityAnalyzer()
+        return cls._vader_analyzer
 
     @staticmethod
     def analyze_sentiment(text: str) -> float:
         """
         Returns a sentiment polarity score between -1.0 (negative) and 1.0 (positive).
-        Uses DistilRoBERTa for domain-specific accuracy.
+        Uses VADER for fast, rule-based sentiment analysis.
         """
         if not text or len(text.strip()) == 0:
             return 0.0
             
         try:
-            pipe = Analyzer.get_pipeline()
-            result = pipe(text[:512])[0]
-            
-            label = result['label'].lower()
-            score = result['score']
-            
-            # Mapping for mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis
-            # Standard labels: 'negative', 'neutral', 'positive' (or LABEL_0, LABEL_1, LABEL_2)
-            if label in ['positive', 'label_2']:
-                return score
-            elif label in ['negative', 'label_0']:
-                return -score
-            else: # neutral / label_1
-                return 0.0
+            analyzer = Analyzer.get_analyzer()
+            # Returns dict with neg, neu, pos, compound
+            scores = analyzer.polarity_scores(text)
+            return float(scores['compound'])
         except Exception as e:
             print(f"Sentiment analysis error: {e}")
             return 0.0
