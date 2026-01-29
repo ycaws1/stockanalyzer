@@ -17,14 +17,18 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Start Background Task
+    # Start Background Tasks
     interval_minutes = os.getenv('CACHE_INTERVAL_MINUTES', 5)
-    task = asyncio.create_task(CacheManager.start_scheduler(interval_minutes=interval_minutes))
+    cache_task = asyncio.create_task(CacheManager.start_scheduler(interval_minutes=interval_minutes))
+    
+    from .services.simulation_manager import SimulationManager
+    sim_task = asyncio.create_task(SimulationManager.start_scheduler(interval_minutes=1)) # Check simulations every minute
     
     yield
     
     # Shutdown
-    task.cancel()
+    cache_task.cancel()
+    sim_task.cancel()
 
 app = FastAPI(title="Stock Analyzer API", lifespan=lifespan)
 

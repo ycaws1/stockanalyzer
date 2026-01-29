@@ -240,7 +240,7 @@ export default function Dashboard() {
                 ) : (
                     <div className={styles.grid}>
                         {getSortedStocks().map((stock) => (
-                            <div key={stock.ticker} style={{ position: 'relative' }}>
+                            <div key={stock.ticker} style={{ position: 'relative', width: '100%', maxWidth: '350px', margin: '0 auto' }}>
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -249,13 +249,19 @@ export default function Dashboard() {
                                     style={{
                                         position: 'absolute',
                                         top: '10px',
-                                        right: '10px',
-                                        background: 'none',
+                                        right: '12px',
+                                        background: 'rgba(0,0,0,0.3)',
                                         border: 'none',
-                                        color: '#666',
+                                        color: '#888',
+                                        width: '24px',
+                                        height: '24px',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
                                         cursor: 'pointer',
                                         zIndex: 10,
-                                        fontSize: '1.2rem',
+                                        fontSize: '1rem',
                                         lineHeight: 1
                                     }}
                                     title="Remove from watchlist"

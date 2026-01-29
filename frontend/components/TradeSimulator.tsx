@@ -147,65 +147,51 @@ export default function TradeSimulator() {
         }
     };
 
-    // Update time ago display every second
-    useEffect(() => {
-        if (!liveMode || !lastUpdateTime) return;
-
-        const interval = setInterval(() => {
-            setTimeAgo(calculateTimeAgo(lastUpdateTime));
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [liveMode, lastUpdateTime]);
-
-    // Auto-refresh signal every 2 minutes
+    // Auto-refresh simulation data every 30 seconds
     useEffect(() => {
         if (!liveMode) return;
 
+        refreshSimulationData();
         const interval = setInterval(() => {
-            refreshLiveSignal();
-        }, 120000); // 2 minutes
+            refreshSimulationData();
+        }, 30000);
 
         return () => clearInterval(interval);
-    }, [liveMode]);
+    }, [liveMode, ticker]);
 
-    // Automatic trade execution based on signals
-    useEffect(() => {
-        if (!liveMode || !liveSignal) return;
+    const refreshSimulationData = async () => {
+        if (!liveMode) return;
+        setLoadingLiveSignal(true);
+        try {
+            // 1. Fetch Status
+            const statusRes = await fetch(`${API_BASE}/live_trade/status/${ticker}`);
+            const statusData = await statusRes.json();
 
-        const signal = liveSignal.signal;
-        const price = liveSignal.current_price;
-
-        // Auto-execute BUY signal
-        if (signal === 'BUY' && livePosition === 0) {
-            const sharesToBuy = Math.floor(liveBalance / price);
-            if (sharesToBuy > 0) {
-                const cost = sharesToBuy * price;
-                setLiveBalance((prev: number) => prev - cost);
-                setLivePosition((prev: number) => prev + sharesToBuy);
-                setLiveTransactions((prev: any[]) => [{
-                    type: 'buy',
-                    shares: sharesToBuy,
-                    price,
-                    timestamp: new Date().toISOString(),
-                    balance_after: liveBalance - cost
-                }, ...prev]);
+            if (statusData.active) {
+                setLiveBalance(statusData.balance);
+                setLivePosition(statusData.position);
+                setLiveSignal({
+                    current_price: statusData.current_price,
+                    total_value: statusData.total_value
+                });
+                if (statusData.last_updated) {
+                    const lastUpd = new Date(statusData.last_updated);
+                    setLastUpdateTime(lastUpd);
+                    setTimeAgo(calculateTimeAgo(lastUpd));
+                }
             }
+
+            // 2. Fetch Trades
+            const tradesRes = await fetch(`${API_BASE}/live_trade/trades/${ticker}`);
+            const tradesData = await tradesRes.json();
+            setLiveTransactions(tradesData);
+
+        } catch (e) {
+            console.error("Failed to refresh simulation:", e);
+        } finally {
+            setLoadingLiveSignal(false);
         }
-        // Auto-execute SELL signal
-        else if (signal === 'SELL' && livePosition > 0) {
-            const revenue = livePosition * price;
-            setLiveBalance((prev: number) => prev + revenue);
-            setLiveTransactions((prev: any[]) => [{
-                type: 'sell',
-                shares: livePosition,
-                price,
-                timestamp: new Date().toISOString(),
-                balance_after: liveBalance + revenue
-            }, ...prev]);
-            setLivePosition(0);
-        }
-    }, [liveSignal, liveMode]); // Trigger when signal changes
+    };
 
 
 
@@ -245,14 +231,14 @@ export default function TradeSimulator() {
                     parameters: params
                 })
             });
-            const data = await res.json();
-            setLiveSignal(data);
+            if (!res.ok) throw new Error("Failed to start");
+
             setLiveMode(true);
-            const now = new Date();
-            setLastUpdateTime(now);
-            setTimeAgo(calculateTimeAgo(now));
-            setLiveStartTime(now);
-            setLivePerformance(null); // Clear previous performance
+            setLiveStartTime(new Date());
+            setLivePerformance(null);
+
+            // Refresh data immediately
+            setTimeout(refreshSimulationData, 1000);
         } catch (e) {
             console.error(e);
             alert("Failed to start live simulation");
@@ -261,107 +247,65 @@ export default function TradeSimulator() {
         }
     };
 
-    const refreshLiveSignal = async () => {
-        if (!liveMode) return;
+    const stopLiveSimulation = async () => {
         setLoadingLiveSignal(true);
         try {
-            const res = await fetch(`${API_BASE}/live_trade/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ticker,
-                    strategy,
-                    parameters: params
-                })
+            // 1. Calculate final metrics before deactivating
+            const finalValue = liveBalance + (livePosition * (liveSignal?.current_price || 0));
+
+            // 2. Tell backend to stop
+            console.log(`Stopping simulation for ${ticker}...`);
+            await fetch(`${API_BASE}/live_trade/stop/${ticker}`, { method: 'POST' });
+
+            // 3. Create a performance summary for the UI
+            setLivePerformance({
+                initial_capital: liveInitialCapital,
+                final_balance: finalValue,
+                total_return_percent: ((finalValue - liveInitialCapital) / liveInitialCapital) * 100,
+                sharpe_ratio: 0, // Placeholder for backend-side calc
+                max_drawdown_percent: 0, // Placeholder
+                total_trades: liveTransactions.length,
+                duration_seconds: liveStartTime ? Math.floor((new Date().getTime() - liveStartTime.getTime()) / 1000) : 0,
+                trades: [...liveTransactions]
             });
-            const data = await res.json();
-            setLiveSignal(data);
-            const now = new Date();
-            setLastUpdateTime(now);
-            setTimeAgo(calculateTimeAgo(now));
+
+            // 4. Reset local UI state
+            setLiveMode(false);
+            setLiveSignal(null);
+            setLiveBalance(10000);
+            setLivePosition(0);
+            setLiveTransactions([]);
+            setLastUpdateTime(null);
         } catch (e) {
             console.error(e);
+            alert("Failed to stop simulation cleanly");
         } finally {
             setLoadingLiveSignal(false);
         }
     };
 
-
-    const stopLiveSimulation = () => {
-        // Calculate final performance before stopping
-        const finalValue = liveBalance + (livePosition * (liveSignal?.current_price || 0));
-        const totalReturn = ((finalValue - liveInitialCapital) / liveInitialCapital) * 100;
-
-        // Calculate equity curve from transactions
-        const equityCurve = [];
-        let runningBalance = liveInitialCapital;
-        let runningPosition = 0;
-
-        // Add initial point
-        equityCurve.push({ value: liveInitialCapital, timestamp: liveStartTime?.toISOString() || '' });
-
-        // Process transactions in reverse (they're stored newest first)
-        [...liveTransactions].reverse().forEach(tx => {
-            if (tx.type === 'buy') {
-                runningBalance -= tx.shares * tx.price;
-                runningPosition += tx.shares;
-            } else {
-                runningBalance += tx.shares * tx.price;
-                runningPosition = 0;
+    // Check for active simulation on mount or ticker change
+    useEffect(() => {
+        const checkActiveStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/live_trade/status/${ticker}`);
+                const data = await res.json();
+                if (data.active) {
+                    setLiveMode(true);
+                    setLiveBalance(data.balance);
+                    setLivePosition(data.position);
+                    setStrategy(data.strategy);
+                    if (data.last_updated) {
+                        setLastUpdateTime(new Date(data.last_updated));
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to check simulation status:", e);
             }
-            equityCurve.push({
-                value: tx.balance_after + (runningPosition * tx.price),
-                timestamp: tx.timestamp
-            });
-        });
-
-        // Calculate max drawdown
-        let maxDrawdown = 0;
-        let peak = liveInitialCapital;
-        equityCurve.forEach(point => {
-            if (point.value > peak) peak = point.value;
-            const drawdown = ((point.value - peak) / peak) * 100;
-            if (drawdown < maxDrawdown) maxDrawdown = drawdown;
-        });
-
-        // Calculate Sharpe ratio (simplified)
-        const returns = [];
-        for (let i = 1; i < equityCurve.length; i++) {
-            const ret = (equityCurve[i].value - equityCurve[i - 1].value) / equityCurve[i - 1].value;
-            returns.push(ret);
-        }
-        const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
-        const stdDev = returns.length > 0
-            ? Math.sqrt(returns.reduce((sq, n) => sq + Math.pow(n - avgReturn, 2), 0) / returns.length)
-            : 0;
-        const sharpeRatio = stdDev !== 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
-
-        const duration = liveStartTime
-            ? Math.floor((new Date().getTime() - liveStartTime.getTime()) / 1000)
-            : 0;
-
-        const performance = {
-            initial_capital: liveInitialCapital,
-            final_balance: finalValue,
-            total_return_percent: totalReturn,
-            max_drawdown_percent: maxDrawdown,
-            sharpe_ratio: sharpeRatio,
-            total_trades: liveTransactions.length,
-            duration_seconds: duration,
-            trades: [...liveTransactions].reverse()
         };
 
-        setLivePerformance(performance);
-
-        // Reset state
-        setLiveMode(false);
-        setLiveSignal(null);
-        setLiveBalance(10000);
-        setLivePosition(0);
-        setLiveTransactions([]);
-        setLastUpdateTime(null);
-        setTimeAgo('');
-    };
+        if (ticker) checkActiveStatus();
+    }, [ticker]);
 
     return (
         <div className={styles.simulator}>
@@ -585,8 +529,9 @@ export default function TradeSimulator() {
 
                 {/* Live Simulation Section */}
                 <div style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '2px solid #333' }}>
-                    <h3 style={{ marginBottom: '1rem', fontSize: '1.3rem', fontWeight: '600' }}>
-                        Live Simulation {liveMode && <span style={{ color: '#4ade80', fontSize: '0.9rem' }}>● ACTIVE</span>}
+                    <h3 style={{ marginBottom: '1rem', fontSize: '1.3rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        Live Simulation: <span style={{ color: '#0070f3' }}>{ticker}</span>
+                        {liveMode && <span style={{ color: '#4ade80', fontSize: '0.9rem' }}>● ACTIVE</span>}
                     </h3>
                     <p style={{ color: '#888', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                         Use the backtest strategy above to run a live simulated trade. The system will provide real-time buy/sell signals.
@@ -634,74 +579,59 @@ export default function TradeSimulator() {
                                 </div>
                             </div>
 
-                            {/* Live Signal */}
-                            {liveSignal && (
-                                <div style={{
-                                    backgroundColor: '#1a1a1a',
-                                    padding: '1.5rem',
-                                    borderRadius: '8px',
-                                    marginBottom: '1.5rem',
-                                    border: `2px solid ${liveSignal.signal === 'BUY' ? '#4ade80' : liveSignal.signal === 'SELL' ? '#ef4444' : '#888'}`
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div>
-                                            <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>
-                                                Current Signal:
-                                                <span style={{
-                                                    marginLeft: '10px',
-                                                    color: liveSignal.signal === 'BUY' ? '#4ade80' : liveSignal.signal === 'SELL' ? '#ef4444' : '#888',
-                                                    fontWeight: 'bold'
-                                                }}>
-                                                    {liveSignal.signal}
-                                                </span>
-                                            </h4>
-                                            <p style={{ margin: '5px 0', color: '#ccc' }}>
-                                                Current Price: <strong>${liveSignal.current_price?.toFixed(2)}</strong>
-                                            </p>
-                                            {liveSignal.indicator_value && (
-                                                <p style={{ margin: '5px 0', color: '#888', fontSize: '0.9rem' }}>
-                                                    {strategy} Value: {liveSignal.indicator_value.toFixed(2)}
-                                                </p>
-                                            )}
-                                            <p style={{ margin: '5px 0', color: '#666', fontSize: '0.8rem' }}>
-                                                Last Updated: {timeAgo || 'Just now'}
-                                            </p>
-                                            <p style={{ margin: '5px 0', color: '#888', fontSize: '0.75rem' }}>
-                                                Auto-refresh in: {lastUpdateTime ? Math.max(0, 120 - Math.floor((new Date().getTime() - lastUpdateTime.getTime()) / 1000)) : 120}s
-                                            </p>
-                                        </div>
-                                        <button
-                                            onClick={refreshLiveSignal}
-                                            disabled={loadingLiveSignal}
-                                            style={{
-                                                padding: '8px 16px',
-                                                backgroundColor: '#333',
-                                                border: '1px solid #555',
-                                                borderRadius: '4px',
-                                                color: '#fff',
-                                                cursor: 'pointer',
-                                                fontSize: '0.9rem'
-                                            }}
-                                        >
-                                            {loadingLiveSignal ? 'Refreshing...' : '🔄 Refresh'}
-                                        </button>
-                                    </div>
-
-                                    {/* Auto-Execution Info */}
-                                    <div style={{
-                                        marginTop: '15px',
-                                        padding: '12px',
-                                        backgroundColor: '#0a0a0a',
-                                        borderRadius: '4px',
-                                        border: '1px solid #333'
-                                    }}>
-                                        <p style={{ margin: 0, color: '#888', fontSize: '0.9rem' }}>
-                                            ✨ <strong style={{ color: '#4ade80' }}>Auto-Execution Mode</strong>: Trades will execute automatically when signals change.
-                                            The system refreshes every 2 minutes or when you click Refresh.
+                            {/* Live Simulation Info Card */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '1.5rem',
+                                borderRadius: '8px',
+                                marginBottom: '1.5rem',
+                                border: '2px solid #0070f3'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>
+                                            Simulating <span style={{ color: '#0070f3' }}>{ticker}</span>
+                                        </h4>
+                                        <p style={{ margin: '5px 0', color: '#ccc' }}>
+                                            Current Market Price: <strong>${liveSignal?.current_price?.toFixed(2) || '...'}</strong>
+                                        </p>
+                                        <p style={{ margin: '5px 0', color: '#888', fontSize: '0.9rem' }}>
+                                            Strategy: <strong style={{ color: '#fff' }}>{strategy}</strong>
+                                        </p>
+                                        <p style={{ margin: '5px 0', color: '#666', fontSize: '0.8rem' }}>
+                                            Last Backend Run: {timeAgo || 'Connecting...'}
                                         </p>
                                     </div>
+                                    <button
+                                        onClick={refreshSimulationData}
+                                        disabled={loadingLiveSignal}
+                                        style={{
+                                            padding: '8px 16px',
+                                            backgroundColor: '#333',
+                                            border: '1px solid #555',
+                                            borderRadius: '4px',
+                                            color: '#fff',
+                                            cursor: 'pointer',
+                                            fontSize: '0.9rem'
+                                        }}
+                                    >
+                                        {loadingLiveSignal ? 'Syncing...' : '🔄 Sync Status'}
+                                    </button>
                                 </div>
-                            )}
+
+                                <div style={{
+                                    marginTop: '15px',
+                                    padding: '12px',
+                                    backgroundColor: '#0a0a0a',
+                                    borderRadius: '4px',
+                                    border: '1px solid #333'
+                                }}>
+                                    <p style={{ margin: 0, color: '#888', fontSize: '0.9rem' }}>
+                                        🚀 <strong style={{ color: '#0070f3' }}>Cloud Execution Active</strong>: This simulation is running 24/7 on the server.
+                                        You can close this browser; trades will still execute based on strategy signals.
+                                    </p>
+                                </div>
+                            </div>
 
                             {/* Transaction History */}
                             {liveTransactions.length > 0 && (
@@ -761,7 +691,7 @@ export default function TradeSimulator() {
                     {livePerformance && (
                         <div style={{ marginTop: '2rem' }}>
                             <h3 style={{ marginBottom: '1rem', fontSize: '1.2rem', fontWeight: '600', color: '#4ade80' }}>
-                                Live Simulation Results
+                                Live Simulation Results: <span style={{ color: '#0070f3' }}>{ticker}</span>
                             </h3>
                             <div className={styles.metricsGrid} style={{ marginBottom: '1.5rem' }}>
                                 <div className={styles.metric}>
