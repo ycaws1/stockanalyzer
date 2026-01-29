@@ -210,7 +210,7 @@ async def get_stock_analysis(ticker: str, interval: str = "1h", db: AsyncSession
                 "price": current_price or 0,
                 "change_percent": change_percent,
                 "average_sentiment": avg_sentiment,
-                "sentiment_label": "Bullish" if change_percent > 0.1 else "Bearish" if change_percent < -0.1 else "Neutral",
+                "sentiment_label": "Bullish" if comp_score["technical"]["score"] > 60 else "Bearish" if comp_score["technical"]["score"] < 40 else "Neutral",
                 "technicals": technicals,
                 "company_info": info,
                 "news": serializable_news,
