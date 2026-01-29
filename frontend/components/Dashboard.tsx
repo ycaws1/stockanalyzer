@@ -28,63 +28,84 @@ export default function Dashboard() {
 
     const fetchStockData = async (tickers: string[]) => {
         if (tickers.length === 0) {
-            setStocks([]); // Clear stocks if no tickers
+            setStocks([]);
             setLoading(false);
             return;
         }
         setLoading(true);
 
-        const promises = tickers.map(async (ticker) => {
-            try {
-                const res = await fetch(`${API_BASE}/stocks/${ticker}/analysis`);
-                if (!res.ok) throw new Error(`Failed to fetch ${ticker}`);
-                const data = await res.json();
-
-                // Map backend response to frontend format
-                // Fetch history for sparkline/price
-                const historyRes = await fetch(`${API_BASE}/stocks/${ticker}/history?period=5d`);
-                const history = await historyRes.ok ? await historyRes.json() : [];
-                const latest = history.length > 0 ? history[history.length - 1] : { close: 0, volume: 0 };
-                const prev = history.length > 1 ? history[history.length - 2] : null;
-
-                const changePercent = prev ? ((latest.close - prev.close) / prev.close) * 100 : 0;
-
-                return {
+        try {
+            // Try fetching all cached stocks at once
+            const overviewRes = await fetch(`${API_BASE}/stocks/overview`);
+            if (overviewRes.ok) {
+                const overviewData = await overviewRes.json();
+                
+                // Map to frontend format
+                const mappedStocks = overviewData.map((data: any) => ({
                     ticker: data.ticker,
                     name: data.company_info?.name || data.ticker,
-                    price: latest.close,
-                    changePercent: changePercent,
-                    sentiment: changePercent > 0.1 ? 'Bullish' : changePercent < -0.1 ? 'Bearish' : 'Neutral',
-                    score: data.score || Math.round((data.average_sentiment + 1) * 50), // Use composite score or fallback
+                    price: data.price || 0,
+                    changePercent: data.change_percent || 0,
+                    sentiment: data.sentiment_label || 'Neutral',
+                    score: data.score || 0,
                     scoreBreakdown: data.score_breakdown || null,
                     scoreDetails: data.score_details || null,
-                    volume: (latest.volume / 1000000).toFixed(1) + 'M',
+                    volume: data.company_info?.volume ? (data.company_info.volume / 1000000).toFixed(1) + 'M' : 'N/A',
                     marketCap: data.company_info?.market_cap ? (data.company_info.market_cap / 1e9).toFixed(1) + 'B' : 'N/A',
                     news: data.news || []
-                };
-            } catch (e) {
-                console.error(`Error fetching data for ${ticker}:`, e);
-                return null;
-            }
-        });
+                }));
 
-        const results = await Promise.allSettled(promises);
-        const successfulStocks = results
-            .filter(result => result.status === 'fulfilled' && result.value !== null)
-            .map(result => (result as PromiseFulfilledResult<any>).value);
-        setStocks(successfulStocks);
-        setLoading(false);
+                // Check if we have all tickers. If not, fetch missing ones individually.
+                const foundTickers = new Set(mappedStocks.map((s: any) => s.ticker));
+                const missingTickers = tickers.filter(t => !foundTickers.has(t));
+
+                if (missingTickers.length > 0) {
+                    console.log(`Fetching ${missingTickers.length} missing stocks individually`);
+                    const missingPromises = missingTickers.map(async (ticker) => {
+                        try {
+                            const res = await fetch(`${API_BASE}/stocks/${ticker}/analysis`);
+                            if (!res.ok) return null;
+                            const data = await res.json();
+                            return {
+                                ticker: data.ticker,
+                                name: data.company_info?.name || data.ticker,
+                                price: data.price || 0,
+                                changePercent: data.change_percent || 0,
+                                sentiment: data.sentiment_label || 'Neutral',
+                                score: data.score || 0,
+                                scoreBreakdown: data.score_breakdown || null,
+                                scoreDetails: data.score_details || null,
+                                volume: data.company_info?.volume ? (data.company_info.volume / 1000000).toFixed(1) + 'M' : 'N/A',
+                                marketCap: data.company_info?.market_cap ? (data.company_info.market_cap / 1e9).toFixed(1) + 'B' : 'N/A',
+                                news: data.news || []
+                            };
+                        } catch (e) {
+                            return null;
+                        }
+                    });
+                    const missingResults = await Promise.all(missingPromises);
+                    const successfulMissing = missingResults.filter(s => s !== null);
+                    setStocks([...mappedStocks, ...successfulMissing]);
+                } else {
+                    setStocks(mappedStocks);
+                }
+            } else {
+                throw new Error('Failed to fetch overview');
+            }
+        } catch (e) {
+            console.error('Error fetching stock data:', e);
+            // Fallback to empty or old behavior if needed, but for now just clear
+            setStocks([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const loadData = async () => {
-        setLoading(true); // Ensure loading is true when starting to load data
+        setLoading(true);
         const watchlist = await fetchWatchlist();
-        // Fallback to default if empty (first run)
         if (watchlist.length === 0) {
-            // Seed defaults? Or just show empty.
-            // Let's seed defaults via backend ideally, but for now we fallback logic in frontend or show empty state.
-            // Let's show empty state to encourage adding.
-            setStocks([]); // Ensure stocks are empty if watchlist is empty
+            setStocks([]);
             setLoading(false);
         } else {
             await fetchStockData(watchlist);

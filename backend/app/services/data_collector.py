@@ -27,15 +27,23 @@ class DataCollector:
     @staticmethod
     async def fetch_company_info(ticker: str):
         """
-        Fetches company metadata.
+        Fetches company metadata and key financial metrics.
         """
         stock = yf.Ticker(ticker)
         info = stock.info
         return {
-            "name": info.get("shortName"),
+            "name": info.get("shortName") or info.get("longName"),
             "sector": info.get("sector"),
             "market_cap": info.get("marketCap"),
-            "summary": info.get("longBusinessSummary")
+            "summary": info.get("longBusinessSummary"),
+            "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
+            "previous_close": info.get("regularMarketPreviousClose"),
+            "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
+            "profit_margin": info.get("profitMargins"),
+            "revenue_growth": info.get("revenueGrowth"),
+            "bid": info.get("bid"),
+            "ask": info.get("ask"),
+            "volume": info.get("regularMarketVolume")
         }
 
     @staticmethod

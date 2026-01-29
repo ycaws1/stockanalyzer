@@ -19,6 +19,24 @@ async def list_stocks(db: AsyncSession = Depends(get_db)):
     stocks = result.scalars().all()
     return [{"ticker": s.ticker, "company_name": s.company_name, "sector": s.sector} for s in stocks]
 
+@router.get("/overview")
+async def get_stocks_overview(db: AsyncSession = Depends(get_db)):
+    """Get all cached analysis for all stocks in watchlist"""
+    import json
+    result = await db.execute(select(Stock))
+    stocks = result.scalars().all()
+    
+    overview = []
+    for s in stocks:
+        if s.cached_analysis:
+            try:
+                data = json.loads(s.cached_analysis)
+                # Ensure it has the necessary fields for the dashboard
+                overview.append(data)
+            except:
+                continue
+    return overview
+
 @router.post("/", status_code=201)
 async def add_stock(ticker: str, db: AsyncSession = Depends(get_db)):
     """Add a new stock to the watchlist"""
@@ -125,14 +143,28 @@ async def get_stock_analysis(ticker: str, db: AsyncSession = Depends(get_db)):
                 news_item['published_at'] = news_item['published_at'].isoformat()
             serializable_news.append(news_item)
         
+        # Calculate price and change percent for easy frontend access
+        current_price = info.get("current_price")
+        prev_close = info.get("previous_close")
+        change_percent = 0
+        if current_price and prev_close:
+            change_percent = ((current_price - prev_close) / prev_close) * 100
+        elif history and len(history) >= 2:
+            latest = history[-1]["close"]
+            prev = history[-2]["close"]
+            change_percent = ((latest - prev) / prev) * 100
+            if not current_price:
+                current_price = latest
+        
         response_data = {
             "ticker": ticker,
+            "price": current_price or 0,
+            "change_percent": change_percent,
             "average_sentiment": avg_sentiment,
             "sentiment_label": "Bullish" if composite_score_data["technical"]["score"] > 60 else "Bearish" if composite_score_data["technical"]["score"] < 40 else "Neutral",
             "technicals": technicals,
             "company_info": info,
             "news": serializable_news,
-            # New composite score data
             "score": composite_score_data["composite_score"],
             "score_breakdown": {
                 "technical": composite_score_data["technical"]["score"],

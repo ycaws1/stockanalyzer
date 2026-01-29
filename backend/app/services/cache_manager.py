@@ -31,6 +31,9 @@ class CacheManager:
             # Analyze Technicals
             technicals = Analyzer.calculate_technicals(history)
             
+            # Calculate Composite Score
+            composite_score_data = Analyzer.calculate_composite_score(history, avg_sentiment, info)
+            
             # Prepare serializable news
             serializable_news = []
             for item in news:
@@ -39,14 +42,36 @@ class CacheManager:
                     news_item['published_at'] = news_item['published_at'].isoformat()
                 serializable_news.append(news_item)
             
+            # Calculate price and change percent
+            current_price = info.get("current_price")
+            prev_close = info.get("previous_close")
+            change_percent = 0
+            if current_price and prev_close:
+                change_percent = ((current_price - prev_close) / prev_close) * 100
+            elif history and len(history) >= 2:
+                latest = history[-1]["close"]
+                prev = history[-2]["close"]
+                change_percent = ((latest - prev) / prev) * 100
+                if not current_price:
+                    current_price = latest
+
             # Construct Analysis Object
             analysis_data = {
                 "ticker": stock_ticker,
+                "price": current_price or 0,
+                "change_percent": change_percent,
                 "average_sentiment": avg_sentiment,
-                "sentiment_label": "Bullish" if avg_sentiment > 0.1 else "Bearish" if avg_sentiment < -0.1 else "Neutral",
+                "sentiment_label": "Bullish" if composite_score_data["technical"]["score"] > 60 else "Bearish" if composite_score_data["technical"]["score"] < 40 else "Neutral",
                 "technicals": technicals,
                 "company_info": info,
-                "news": serializable_news
+                "news": serializable_news,
+                "score": composite_score_data["composite_score"],
+                "score_breakdown": {
+                    "technical": composite_score_data["technical"]["score"],
+                    "sentiment": composite_score_data["sentiment"]["score"],
+                    "financial": composite_score_data["financial"]["score"]
+                },
+                "score_details": composite_score_data
             }
             
             # Update DB
