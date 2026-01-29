@@ -11,7 +11,8 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [newTicker, setNewTicker] = useState('');
     const [adding, setAdding] = useState(false);
-    const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('change');
+    const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('composite');
+    const [trendView, setTrendView] = useState<'1H' | '1D'>('1H');
     const [allExpanded, setAllExpanded] = useState<boolean | undefined>(undefined);
 
     const fetchWatchlist = async () => {
@@ -34,12 +35,14 @@ export default function Dashboard() {
         }
         setLoading(true);
 
+        const intervalParam = trendView === '1H' ? '1h' : '1d';
+
         try {
             // Try fetching all cached stocks at once
-            const overviewRes = await fetch(`${API_BASE}/stocks/overview`);
+            const overviewRes = await fetch(`${API_BASE}/stocks/overview?interval=${intervalParam}`);
             if (overviewRes.ok) {
                 const overviewData = await overviewRes.json();
-                
+
                 // Map to frontend format
                 const mappedStocks = overviewData.map((data: any) => ({
                     ticker: data.ticker,
@@ -63,7 +66,7 @@ export default function Dashboard() {
                     console.log(`Fetching ${missingTickers.length} missing stocks individually`);
                     const missingPromises = missingTickers.map(async (ticker) => {
                         try {
-                            const res = await fetch(`${API_BASE}/stocks/${ticker}/analysis`);
+                            const res = await fetch(`${API_BASE}/stocks/${ticker}/analysis?interval=${intervalParam}`);
                             if (!res.ok) return null;
                             const data = await res.json();
                             return {
@@ -114,7 +117,7 @@ export default function Dashboard() {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [trendView]);
 
     const handleAddStock = async () => {
         if (!newTicker) return;
@@ -201,6 +204,23 @@ export default function Dashboard() {
                             {allExpanded === true ? 'Collapse All' : 'Expand All'}
                         </button>
 
+                        {/* Trend Controls */}
+                        <select
+                            value={trendView}
+                            onChange={(e) => setTrendView(e.target.value as '1H' | '1D')}
+                            style={{
+                                background: 'rgba(255,255,255,0.05)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                padding: '0.5rem',
+                                borderRadius: '6px',
+                                outline: 'none'
+                            }}
+                        >
+                            <option value="1H">Hourly Trend (1H)</option>
+                            <option value="1D">Daily Trend (1D)</option>
+                        </select>
+
                         {/* Sort Controls */}
                         <select
                             value={sortMethod}
@@ -216,7 +236,7 @@ export default function Dashboard() {
                         >
                             <option value="default">Sort by...</option>
                             <option value="marketCap">Market Cap</option>
-                            <option value="change">Daily Change %</option>
+                            <option value="change">Change %</option>
                             <option value="sentiment">Sentiment Score</option>
                             <option value="composite">Composite Score</option>
                         </select>
@@ -292,7 +312,12 @@ export default function Dashboard() {
                                 >
                                     &times;
                                 </button>
-                                <StockCard data={stock} forceExpanded={allExpanded} />
+                                <StockCard
+                                    data={stock}
+                                    forceExpanded={allExpanded}
+                                    trendPeriod={trendView === '1H' ? '5d' : '1mo'}
+                                    trendInterval={trendView === '1H' ? '1h' : '1d'}
+                                />
                             </div>
                         ))}
                     </div>

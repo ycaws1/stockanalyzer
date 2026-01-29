@@ -25,10 +25,12 @@ interface StockData {
 interface StockCardProps {
     data: StockData;
     forceExpanded?: boolean;
+    trendPeriod?: string;
+    trendInterval?: string;
 }
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-export default function StockCard({ data, forceExpanded }: StockCardProps) {
+export default function StockCard({ data, forceExpanded, trendPeriod = '5d', trendInterval = '1h' }: StockCardProps) {
     const isPositive = data.changePercent >= 0;
     const [expanded, setExpanded] = useState(false);
 
@@ -42,24 +44,40 @@ export default function StockCard({ data, forceExpanded }: StockCardProps) {
             }
         }
     }, [forceExpanded]);
+
+    // Refetch if trend settings change while expanded
+    React.useEffect(() => {
+        if (expanded) {
+            fetchHistory();
+        }
+    }, [trendPeriod, trendInterval]);
+
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    const handleExpand = async () => {
-        if (!expanded && history.length === 0) {
-            setLoadingHistory(true);
-            try {
-                // Fetch 5d hourly data
-                const res = await fetch(`${API_BASE}/stocks/${data.ticker}/history?period=5d&interval=1h`);
-                if (res.ok) {
-                    const histData = await res.json();
-                    setHistory(histData);
-                }
-            } catch (e) {
-                console.error("Failed to load history", e);
-            } finally {
-                setLoadingHistory(false);
+    const fetchHistory = async () => {
+        setLoadingHistory(true);
+        try {
+            const res = await fetch(`${API_BASE}/stocks/${data.ticker}/history?period=${trendPeriod}&interval=${trendInterval}`);
+            if (res.ok) {
+                const histData = await res.json();
+                setHistory(histData);
             }
+        } catch (e) {
+            console.error("Failed to load history", e);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    const handleExpand = async () => {
+        if (!expanded) {
+            // If we don't have history or if parameters changed (though useEffect handles param change, 
+            // here we handle initial open or re-open)
+            // Ideally simply calling fetchHistory if needed.
+            // But to avoid double fetch with useEffect, let's just checking history length is not enough if params changed.
+            // Simpler: Just fetch.
+            await fetchHistory();
         }
         setExpanded(!expanded);
     };
@@ -152,9 +170,9 @@ export default function StockCard({ data, forceExpanded }: StockCardProps) {
                 <div className={styles.expandedContent} onClick={(e) => e.stopPropagation()}>
                     <div className={styles.divider} />
 
-                    {/* Hourly Trend Chart */}
+                    {/* Trend Chart */}
                     <div className={styles.chartSection}>
-                        <h4>5-Day Hourly Trend</h4>
+                        <h4>Price Trend ({trendPeriod} / {trendInterval})</h4>
                         {loadingHistory ? (
                             <div className={styles.loading}>Loading chart...</div>
                         ) : (

@@ -96,12 +96,15 @@ class Analyzer:
         if pd.isna(rsi):
             rsi_score = 50
         elif rsi < 30:
-            rsi_score = 100 - rsi  # 70-100 range
+            # Oversold (Potential Bounce) - Score 70-100
+            rsi_score = 70 + (30 - rsi)
         elif rsi > 70:
-            rsi_score = rsi - 70  # 0-30 range
+            # Overbought (Strong Trend but Risky) - Score 50-70
+            # Previously was 0-30, now we gently taper down from 70
+            rsi_score = max(0, 70 - (rsi - 70)) 
         else:
-            # 30-70 range: normalize to 30-70
-            rsi_score = 30 + ((rsi - 30) / 40) * 40
+            # Neutral/Trend (30-70) - Score matches RSI
+            rsi_score = rsi
         
         # SMA Score (0-100)
         # Price above SMA = bullish = 60-100

@@ -20,8 +20,8 @@ async def list_stocks(db: AsyncSession = Depends(get_db)):
     return [{"ticker": s.ticker, "company_name": s.company_name, "sector": s.sector} for s in stocks]
 
 @router.get("/overview")
-async def get_stocks_overview(db: AsyncSession = Depends(get_db)):
-    """Get all cached analysis for all stocks in watchlist"""
+async def get_stocks_overview(interval: str = "1h", db: AsyncSession = Depends(get_db)):
+    """Get all cached analysis for all stocks in watchlist based on interval (1d or 1h)"""
     import json
     result = await db.execute(select(Stock))
     stocks = result.scalars().all()
@@ -31,8 +31,13 @@ async def get_stocks_overview(db: AsyncSession = Depends(get_db)):
         if s.cached_analysis:
             try:
                 data = json.loads(s.cached_analysis)
-                # Ensure it has the necessary fields for the dashboard
-                overview.append(data)
+                # Check if data is in new format (dict with keys '1d', '1h')
+                if isinstance(data, dict):
+                    if interval in data and isinstance(data[interval], dict):
+                        overview.append(data[interval])
+                    elif "1d" not in data and "1h" not in data and interval == "1d":
+                        # Legacy format (flat object), assume it's 1d data
+                        overview.append(data)
             except:
                 continue
     return overview
@@ -98,90 +103,145 @@ async def get_stock_history(ticker: str, period: str = "1mo", interval: str = "1
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{ticker}/analysis")
-async def get_stock_analysis(ticker: str, db: AsyncSession = Depends(get_db)):
+async def get_stock_analysis(ticker: str, interval: str = "1h", db: AsyncSession = Depends(get_db)):
     try:
+        # Determine fetch parameters based on requested interval
+        if interval == "1h":
+            fetch_period = "5d"
+            fetch_interval = "1h"
+        else:
+            fetch_period = "1mo"
+            fetch_interval = "1d"
+
         # Check Cache First
         stmt = select(Stock).where(Stock.ticker == ticker)
         result = await db.execute(stmt)
         stock = result.scalars().first()
         
-        # If cached data exists, return it if it has the new composite score fields
+        # Check if we have valid cached data for this interval
+        import json
+        cached_registry = {}
         if stock and stock.cached_analysis:
-             import json
-             cached_data = json.loads(stock.cached_analysis)
-             if "score_breakdown" in cached_data:
-                 return cached_data
-             # Otherwise, continue to re-analyze to generate the breakdown
+            try:
+                cached_registry = json.loads(stock.cached_analysis)
+                # If registry is old flat format, wrap it in '1d' to migrate structure eventually
+                if "1d" not in cached_registry and "1h" not in cached_registry:
+                     cached_registry = {"1d": cached_registry}
+                
+                # Check if specific interval data is present
+                if interval in cached_registry:
+                    return cached_registry[interval]
+            except:
+                cached_registry = {}
 
-        # Fetch data concurrently (Fallback)
-        news, history, info = await asyncio.gather(
+        # Fetch data concurrently (Fallback) - We fetch BOTH 1h and 1d to populate cache fully
+        news, history_1h, history_1d, info = await asyncio.gather(
             DataCollector.fetch_news(ticker),
-            DataCollector.fetch_stock_data(ticker, period="1mo"),
+            DataCollector.fetch_stock_data(ticker, period="5d", interval="1h"),
+            DataCollector.fetch_stock_data(ticker, period="1mo", interval="1d"),
             DataCollector.fetch_company_info(ticker)
         )
         
-        # Analyze Sentiment
+        # Helper to generate analysis for a specific history dataset
+        def generate_analysis(hist, interval_label):
+            # Analyze Technicals
+            technicals = Analyzer.calculate_technicals(hist)
+            
+            # Analyze Sentiment (common for both)
+            sentiment_scores = []
+            for item in news:
+                # Use cached sentiment if available to avoid re-analyzing? 
+                # Analyzer is fast enough, let's just re-run or better yet, run once outside.
+                pass
+                
+            # ...
+            return {}
+
+        # Analyze Sentiment ONCE (Shared)
         sentiment_scores = []
         for item in news:
             score = Analyzer.analyze_sentiment(item['headline'])
             item['sentiment_score'] = score
             sentiment_scores.append(score)
-            
+        
         avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0
-        
-        # Analyze Technicals
-        technicals = Analyzer.calculate_technicals(history)
-        
-        # Calculate Composite Score
-        composite_score_data = Analyzer.calculate_composite_score(history, avg_sentiment, info)
-        
-        # Prepare response data with serializable dates
+        sentiment_data = Analyzer.calculate_sentiment_score(avg_sentiment) # We can reuse this too if we want
+
+        # Prepare Serializable News ONCE
         serializable_news = []
         for item in news:
             news_item = dict(item)
             if 'published_at' in news_item and hasattr(news_item['published_at'], 'isoformat'):
                 news_item['published_at'] = news_item['published_at'].isoformat()
             serializable_news.append(news_item)
-        
-        # Calculate price and change percent for easy frontend access
-        current_price = info.get("current_price")
-        prev_close = info.get("previous_close")
-        change_percent = 0
-        if current_price and prev_close:
-            change_percent = ((current_price - prev_close) / prev_close) * 100
-        elif history and len(history) >= 2:
-            latest = history[-1]["close"]
-            prev = history[-2]["close"]
-            change_percent = ((latest - prev) / prev) * 100
-            if not current_price:
-                current_price = latest
-        
-        response_data = {
-            "ticker": ticker,
-            "price": current_price or 0,
-            "change_percent": change_percent,
-            "average_sentiment": avg_sentiment,
-            "sentiment_label": "Bullish" if composite_score_data["technical"]["score"] > 60 else "Bearish" if composite_score_data["technical"]["score"] < 40 else "Neutral",
-            "technicals": technicals,
-            "company_info": info,
-            "news": serializable_news,
-            "score": composite_score_data["composite_score"],
-            "score_breakdown": {
-                "technical": composite_score_data["technical"]["score"],
-                "sentiment": composite_score_data["sentiment"]["score"],
-                "financial": composite_score_data["financial"]["score"]
-            },
-            "score_details": composite_score_data
-        }
 
-        # Save to Cache (if stock exists in DB)
+        # Function to build analysis object
+        def build_analysis_response(hist, intv):
+            # Technicals
+            technicals = Analyzer.calculate_technicals(hist)
+            # Composite
+            comp_score = Analyzer.calculate_composite_score(hist, avg_sentiment, info)
+            
+            # Price & Change
+            current_price = info.get("current_price")
+            change_percent = 0
+            
+            if intv == "1h":
+                 if hist and len(hist) >= 2:
+                    latest = hist[-1]["close"]
+                    prev = hist[-2]["close"]
+                    if prev and prev != 0:
+                        change_percent = ((latest - prev) / prev) * 100
+                    current_price = latest
+            else: # 1d
+                prev_close = info.get("previous_close")
+                if current_price and prev_close:
+                    change_percent = ((current_price - prev_close) / prev_close) * 100
+                elif hist and len(hist) >= 2:
+                    latest = hist[-1]["close"]
+                    prev = hist[-2]["close"]
+                    change_percent = ((latest - prev) / prev) * 100
+                    if not current_price:
+                        current_price = latest
+            
+            return {
+                "ticker": ticker,
+                "period": intv,
+                "price": current_price or 0,
+                "change_percent": change_percent,
+                "average_sentiment": avg_sentiment,
+                "sentiment_label": "Bullish" if comp_score["technical"]["score"] > 60 else "Bearish" if comp_score["technical"]["score"] < 40 else "Neutral",
+                "technicals": technicals,
+                "company_info": info,
+                "news": serializable_news,
+                "score": comp_score["composite_score"],
+                "score_breakdown": {
+                    "technical": comp_score["technical"]["score"],
+                    "sentiment": comp_score["sentiment"]["score"],
+                    "financial": comp_score["financial"]["score"]
+                },
+                "score_details": comp_score
+            }
+
+        # Build both responses
+        response_1h = build_analysis_response(history_1h, "1h")
+        response_1d = build_analysis_response(history_1d, "1d")
+        
+        # Update Cache Registry
+        cached_registry["1h"] = response_1h
+        cached_registry["1d"] = response_1d
+        
         if stock:
             import json
             from datetime import datetime
-            stock.cached_analysis = json.dumps(response_data)
+            stock.cached_analysis = json.dumps(cached_registry)
             stock.last_updated = datetime.now()
             await db.commit()
 
-        return response_data
+        # Return the one requested
+        return cached_registry.get(interval, response_1d)
+
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
