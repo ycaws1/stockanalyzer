@@ -45,23 +45,42 @@ class PushNotificationService:
     
     @classmethod
     def add_subscription(cls, subscription: dict) -> bool:
-        """Add a push subscription."""
+        """Add a push subscription, replacing any existing subscription with the same endpoint."""
+        endpoint = subscription.get("endpoint", "")
+        
+        # Remove any existing subscription with the same endpoint
+        cls._remove_by_endpoint(endpoint)
+        
         sub_str = json.dumps(subscription, sort_keys=True)
-        if sub_str not in cls._subscriptions:
-            cls._subscriptions.add(sub_str)
-            print(f"[Push] New subscription added. Total: {len(cls._subscriptions)}")
-            return True
-        return False
+        cls._subscriptions.add(sub_str)
+        print(f"[Push] Subscription added for endpoint: {endpoint[:50]}... Total: {len(cls._subscriptions)}")
+        return True
     
     @classmethod
     def remove_subscription(cls, subscription: dict) -> bool:
-        """Remove a push subscription."""
-        sub_str = json.dumps(subscription, sort_keys=True)
-        if sub_str in cls._subscriptions:
-            cls._subscriptions.discard(sub_str)
+        """Remove a push subscription by endpoint."""
+        endpoint = subscription.get("endpoint", "")
+        removed = cls._remove_by_endpoint(endpoint)
+        if removed:
             print(f"[Push] Subscription removed. Total: {len(cls._subscriptions)}")
-            return True
-        return False
+        return removed
+    
+    @classmethod
+    def _remove_by_endpoint(cls, endpoint: str) -> bool:
+        """Remove all subscriptions matching the given endpoint."""
+        to_remove = []
+        for sub_str in cls._subscriptions:
+            try:
+                sub = json.loads(sub_str)
+                if sub.get("endpoint") == endpoint:
+                    to_remove.append(sub_str)
+            except:
+                pass
+        
+        for sub_str in to_remove:
+            cls._subscriptions.discard(sub_str)
+        
+        return len(to_remove) > 0
     
     @classmethod
     def get_subscription_count(cls) -> int:

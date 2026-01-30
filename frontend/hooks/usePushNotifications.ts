@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const ALERTS_OPT_OUT_KEY = 'stockanalyzer_alerts_optout';
 
 interface PushState {
     isSupported: boolean;
@@ -46,19 +47,22 @@ export function usePushNotifications() {
                 // Check current permission status
                 const permissionStatus = Notification.permission;
 
+                // Check if user explicitly opted out
+                const userOptedOut = localStorage.getItem(ALERTS_OPT_OUT_KEY) === 'true';
+
                 if (permissionStatus === 'default') {
                     // Permission not yet asked - request it
                     console.log('[Push] Requesting notification permission...');
                     const permission = await Notification.requestPermission();
 
-                    if (permission === 'granted' && !existingSubscription) {
+                    if (permission === 'granted' && !existingSubscription && !userOptedOut) {
                         // Auto-subscribe after permission granted
                         console.log('[Push] Permission granted, auto-subscribing...');
                         await autoSubscribe(registration, thresholds);
                         return;
                     }
-                } else if (permissionStatus === 'granted' && !existingSubscription) {
-                    // Permission already granted but not subscribed - auto-subscribe
+                } else if (permissionStatus === 'granted' && !existingSubscription && !userOptedOut) {
+                    // Permission already granted but not subscribed and didn't opt out - auto-subscribe
                     console.log('[Push] Already have permission, auto-subscribing...');
                     await autoSubscribe(registration, thresholds);
                     return;
@@ -163,6 +167,9 @@ export function usePushNotifications() {
                 throw new Error('Failed to register subscription on server');
             }
 
+            // Clear opt-out flag since user is subscribing
+            localStorage.removeItem(ALERTS_OPT_OUT_KEY);
+
             setState(prev => ({ ...prev, isSubscribed: true, isLoading: false }));
             return true;
         } catch (err: any) {
@@ -195,6 +202,9 @@ export function usePushNotifications() {
                     body: JSON.stringify(subscription.toJSON())
                 });
             }
+
+            // Set opt-out flag to prevent auto-resubscribing
+            localStorage.setItem(ALERTS_OPT_OUT_KEY, 'true');
 
             setState(prev => ({ ...prev, isSubscribed: false, isLoading: false }));
             return true;
