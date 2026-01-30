@@ -7,15 +7,17 @@ from ..database import AsyncSessionLocal
 from ..models import Stock
 from .data_collector import DataCollector
 from .analyzer import Analyzer
+from .push_notifications import PushNotificationService
 
 class CacheManager:
     @staticmethod
     async def update_stock_cache(stock_ticker: str, db: AsyncSession):
         try:
-            # Re-use the data fetching logic from routers/stocks.py
-            news, history, info = await asyncio.gather(
+            # Fetch both 1h and 1d data for accurate change detection
+            news, history_1h, history_1d, info = await asyncio.gather(
                 DataCollector.fetch_news(stock_ticker),
-                DataCollector.fetch_stock_data(stock_ticker, period="1mo"),
+                DataCollector.fetch_stock_data(stock_ticker, period="5d", interval="1h"),
+                DataCollector.fetch_stock_data(stock_ticker, period="1mo", interval="1d"),
                 DataCollector.fetch_company_info(stock_ticker)
             )
 
@@ -28,11 +30,11 @@ class CacheManager:
             
             avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0
             
-            # Analyze Technicals
-            technicals = Analyzer.calculate_technicals(history)
+            # Analyze Technicals (use 1d data for technicals)
+            technicals = Analyzer.calculate_technicals(history_1d)
             
             # Calculate Composite Score
-            composite_score_data = Analyzer.calculate_composite_score(history, avg_sentiment, info)
+            composite_score_data = Analyzer.calculate_composite_score(history_1d, avg_sentiment, info)
             
             # Prepare serializable news
             serializable_news = []
@@ -42,24 +44,33 @@ class CacheManager:
                     news_item['published_at'] = news_item['published_at'].isoformat()
                 serializable_news.append(news_item)
             
-            # Calculate price and change percent
+            # Calculate price and change percent for 1D
             current_price = info.get("current_price")
             prev_close = info.get("previous_close")
-            change_percent = 0
+            change_percent_1d = 0
             if current_price and prev_close:
-                change_percent = ((current_price - prev_close) / prev_close) * 100
-            elif history and len(history) >= 2:
-                latest = history[-1]["close"]
-                prev = history[-2]["close"]
-                change_percent = ((latest - prev) / prev) * 100
+                change_percent_1d = ((current_price - prev_close) / prev_close) * 100
+            elif history_1d and len(history_1d) >= 2:
+                latest = history_1d[-1]["close"]
+                prev = history_1d[-2]["close"]
+                change_percent_1d = ((latest - prev) / prev) * 100
                 if not current_price:
                     current_price = latest
+            
+            # Calculate 1H change percent
+            change_percent_1h = 0
+            if history_1h and len(history_1h) >= 2:
+                latest_1h = history_1h[-1]["close"]
+                prev_1h = history_1h[-2]["close"]
+                change_percent_1h = ((latest_1h - prev_1h) / prev_1h) * 100
 
-            # Construct Analysis Object
+            # Construct Analysis Object (using 1d change as default)
             analysis_data = {
                 "ticker": stock_ticker,
                 "price": current_price or 0,
-                "change_percent": change_percent,
+                "change_percent": change_percent_1d,
+                "change_percent_1h": change_percent_1h,
+                "change_percent_1d": change_percent_1d,
                 "average_sentiment": avg_sentiment,
                 "sentiment_label": "Bullish" if composite_score_data["technical"]["score"] > 60 else "Bearish" if composite_score_data["technical"]["score"] < 40 else "Neutral",
                 "technicals": technicals,
@@ -73,6 +84,13 @@ class CacheManager:
                 },
                 "score_details": composite_score_data
             }
+            
+            # Check for push notification trigger
+            PushNotificationService.check_and_notify(
+                ticker=stock_ticker,
+                change_1h=change_percent_1h,
+                change_1d=change_percent_1d
+            )
             
             # Update DB
             result = await db.execute(select(Stock).where(Stock.ticker == stock_ticker))

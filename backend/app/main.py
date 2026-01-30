@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import stocks, backtest, live_trade
+from .routers import stocks, backtest, live_trade, push
 
 from contextlib import asynccontextmanager
 import asyncio
@@ -47,6 +47,7 @@ app.add_middleware(
 app.include_router(stocks.router)
 app.include_router(backtest.router)
 app.include_router(live_trade.router)
+app.include_router(push.router)
 
 @app.get("/")
 async def root():

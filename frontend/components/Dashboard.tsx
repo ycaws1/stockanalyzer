@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import StockCard from './StockCard';
 import styles from './Dashboard.module.css';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -14,6 +15,7 @@ export default function Dashboard() {
     const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('composite');
     const [trendView, setTrendView] = useState<'1H' | '1D'>('1H');
     const [allExpanded, setAllExpanded] = useState<boolean | undefined>(undefined);
+    const pushNotifications = usePushNotifications();
 
     const fetchWatchlist = async () => {
         try {
@@ -187,6 +189,28 @@ export default function Dashboard() {
                     <h2>Market Overview</h2>
 
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Push Notification Toggle */}
+                        {pushNotifications.isSupported && (
+                            <button
+                                onClick={() => pushNotifications.isSubscribed ? pushNotifications.unsubscribe() : pushNotifications.subscribe()}
+                                disabled={pushNotifications.isLoading}
+                                style={{
+                                    background: pushNotifications.isSubscribed ? 'var(--primary)' : 'transparent',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '6px',
+                                    color: pushNotifications.isSubscribed ? 'white' : 'var(--text-muted)',
+                                    padding: '0.5rem 0.8rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    whiteSpace: 'nowrap',
+                                    opacity: pushNotifications.isLoading ? 0.6 : 1
+                                }}
+                                title={pushNotifications.isSubscribed ? 'Disable alerts' : `Enable alerts (1H >${pushNotifications.thresholds?.threshold_1h || 2}%, 1D >${pushNotifications.thresholds?.threshold_1d || 3.5}%)`}
+                            >
+                                {pushNotifications.isLoading ? '...' : (pushNotifications.isSubscribed ? '🔔 Alerts On' : '🔕 Alerts Off')}
+                            </button>
+                        )}
+
                         <button
                             onClick={() => setAllExpanded(prev => prev === true ? false : true)}
                             style={{
