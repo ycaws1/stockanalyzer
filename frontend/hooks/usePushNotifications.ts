@@ -11,6 +11,9 @@ interface PushState {
     isLoading: boolean;
     error: string | null;
     thresholds: { threshold_1h: number; threshold_1d: number } | null;
+    isPWA: boolean;
+    needsPermissionPrompt: boolean;
+    permissionStatus: 'default' | 'granted' | 'denied' | 'unknown';
 }
 
 export function usePushNotifications() {
@@ -19,16 +22,23 @@ export function usePushNotifications() {
         isSubscribed: false,
         isLoading: true,
         error: null,
-        thresholds: null
+        thresholds: null,
+        isPWA: false,
+        needsPermissionPrompt: false,
+        permissionStatus: 'unknown'
     });
 
-    // Check if push notifications are supported and auto-request permission
+    // Check if push notifications are supported and handle permission
     useEffect(() => {
         const checkAndRequestPermission = async () => {
             const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
+            // Detect if running as PWA (standalone mode)
+            const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
+                (window.navigator as any).standalone === true;
+
             if (!supported) {
-                setState(prev => ({ ...prev, isSupported: false, isLoading: false }));
+                setState(prev => ({ ...prev, isSupported: false, isLoading: false, isPWA }));
                 return;
             }
 
@@ -50,21 +60,36 @@ export function usePushNotifications() {
                 // Check if user explicitly opted out
                 const userOptedOut = localStorage.getItem(ALERTS_OPT_OUT_KEY) === 'true';
 
-                if (permissionStatus === 'default') {
-                    // Permission not yet asked - request it
-                    console.log('[Push] Requesting notification permission...');
-                    const permission = await Notification.requestPermission();
+                // Sync existing subscription with backend to ensure it's not lost on server restart
+                if (existingSubscription && !userOptedOut) {
+                    console.log('[Push] Syncing existing subscription with backend...');
+                    await fetch(`${API_URL}/push/subscribe`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(existingSubscription.toJSON())
+                    }).catch(err => console.error('[Push] Sync failed:', err));
+                }
 
-                    if (permission === 'granted' && !existingSubscription && !userOptedOut) {
-                        // Auto-subscribe after permission granted
-                        console.log('[Push] Permission granted, auto-subscribing...');
-                        await autoSubscribe(registration, thresholds);
-                        return;
-                    }
-                } else if (permissionStatus === 'granted' && !existingSubscription && !userOptedOut) {
-                    // Permission already granted but not subscribed and didn't opt out - auto-subscribe
+                // If permission not yet asked, show banner (for both browser and PWA)
+                if (permissionStatus === 'default') {
+                    console.log('[Push] Permission not granted, showing permission prompt banner');
+                    setState({
+                        isSupported: true,
+                        isSubscribed: false,
+                        isLoading: false,
+                        error: null,
+                        thresholds,
+                        isPWA,
+                        needsPermissionPrompt: !userOptedOut,
+                        permissionStatus: 'default'
+                    });
+                    return;
+                }
+
+                // If permission already granted but not subscribed, auto-subscribe
+                if (permissionStatus === 'granted' && !existingSubscription && !userOptedOut) {
                     console.log('[Push] Already have permission, auto-subscribing...');
-                    await autoSubscribe(registration, thresholds);
+                    await autoSubscribe(registration, thresholds, isPWA);
                     return;
                 }
 
@@ -73,7 +98,10 @@ export function usePushNotifications() {
                     isSubscribed: !!existingSubscription,
                     isLoading: false,
                     error: null,
-                    thresholds
+                    thresholds,
+                    isPWA,
+                    needsPermissionPrompt: false,
+                    permissionStatus: permissionStatus as 'default' | 'granted' | 'denied'
                 });
             } catch (err) {
                 console.error('[Push] Setup error:', err);
@@ -87,7 +115,7 @@ export function usePushNotifications() {
         };
 
         // Helper function to auto-subscribe
-        const autoSubscribe = async (registration: ServiceWorkerRegistration, thresholds: any) => {
+        const autoSubscribe = async (registration: ServiceWorkerRegistration, thresholds: any, isPWA: boolean) => {
             try {
                 const keyRes = await fetch(`${API_URL}/push/vapid-public-key`);
                 if (!keyRes.ok) {
@@ -112,7 +140,10 @@ export function usePushNotifications() {
                     isSubscribed: true,
                     isLoading: false,
                     error: null,
-                    thresholds
+                    thresholds,
+                    isPWA,
+                    needsPermissionPrompt: false,
+                    permissionStatus: 'granted'
                 });
             } catch (err) {
                 console.error('[Push] Auto-subscribe failed:', err);
@@ -121,7 +152,10 @@ export function usePushNotifications() {
                     isSubscribed: false,
                     isLoading: false,
                     error: null,
-                    thresholds
+                    thresholds,
+                    isPWA,
+                    needsPermissionPrompt: false,
+                    permissionStatus: 'granted'
                 });
             }
         };
@@ -170,7 +204,7 @@ export function usePushNotifications() {
             // Clear opt-out flag since user is subscribing
             localStorage.removeItem(ALERTS_OPT_OUT_KEY);
 
-            setState(prev => ({ ...prev, isSubscribed: true, isLoading: false }));
+            setState(prev => ({ ...prev, isSubscribed: true, isLoading: false, needsPermissionPrompt: false, permissionStatus: 'granted' }));
             return true;
         } catch (err: any) {
             console.error('[Push] Subscribe error:', err);
@@ -219,10 +253,17 @@ export function usePushNotifications() {
         }
     }, []);
 
+    // Dismiss permission prompt
+    const dismissPermissionPrompt = useCallback(() => {
+        localStorage.setItem(ALERTS_OPT_OUT_KEY, 'true');
+        setState(prev => ({ ...prev, needsPermissionPrompt: false }));
+    }, []);
+
     return {
         ...state,
         subscribe,
-        unsubscribe
+        unsubscribe,
+        dismissPermissionPrompt
     };
 }
 

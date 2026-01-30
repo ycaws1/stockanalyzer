@@ -86,7 +86,7 @@ class CacheManager:
             }
             
             # Check for push notification trigger
-            PushNotificationService.check_and_notify(
+            await PushNotificationService.check_and_notify(
                 ticker=stock_ticker,
                 change_1h=change_percent_1h,
                 change_1d=change_percent_1d

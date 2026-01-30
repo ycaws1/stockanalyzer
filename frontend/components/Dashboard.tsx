@@ -179,6 +179,62 @@ export default function Dashboard() {
 
     return (
         <div className={`container ${styles.dashboard}`}>
+            {/* Permission Prompt Banner for PWA/iOS */}
+            {pushNotifications.needsPermissionPrompt && (
+                <div style={{
+                    background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+                    borderRadius: '12px',
+                    padding: '1rem 1.5rem',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '1rem',
+                    boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)'
+                }}>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+                            🔔 Enable Stock Alerts
+                        </div>
+                        <div style={{ opacity: 0.9, fontSize: '0.9rem' }}>
+                            Get notified when stocks move &gt;{pushNotifications.thresholds?.threshold_1h || 2}% (1H) or &gt;{pushNotifications.thresholds?.threshold_1d || 3.5}% (1D)
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={() => pushNotifications.subscribe()}
+                            disabled={pushNotifications.isLoading}
+                            style={{
+                                background: 'white',
+                                color: '#667eea',
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '0.6rem 1.2rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                opacity: pushNotifications.isLoading ? 0.7 : 1
+                            }}
+                        >
+                            {pushNotifications.isLoading ? '...' : 'Enable'}
+                        </button>
+                        <button
+                            onClick={() => pushNotifications.dismissPermissionPrompt()}
+                            style={{
+                                background: 'rgba(255,255,255,0.2)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '0.6rem 1rem',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <header className={styles.section}>
                 <h1>Stock Analyzer</h1>
                 <p>Real-time AI-powered market insights and trade simulation.</p>

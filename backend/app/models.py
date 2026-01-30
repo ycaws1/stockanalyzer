@@ -80,3 +80,13 @@ class SimulationTrade(Base):
     balance_after = Column(Float)
     
     simulation = relationship("Simulation", backref="trades")
+
+class PushSubscription(Base) :
+    __tablename__ = "push_subscriptions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    endpoint = Column(String, unique=True, index=True)
+    keys_auth = Column(String)  # auth key
+    keys_p256dh = Column(String) # p256dh key
+    created_at = Column(DateTime, default=datetime.utcnow)
+

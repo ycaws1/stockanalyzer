@@ -3,12 +3,16 @@ Web Push Notification Service for Stock Alerts
 Sends notifications when stocks move beyond configurable thresholds.
 """
 import os
+import json
+import asyncio
+from typing import Dict, Set, List
+from pywebpush import webpush, WebPushException
+from sqlalchemy.future import select
+from ..database import AsyncSessionLocal
+from ..models import PushSubscription
+
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before reading env vars
-
-import json
-from typing import Dict, Set
-from pywebpush import webpush, WebPushException
 
 # ============================================
 # CONFIGURABLE THRESHOLDS
@@ -29,10 +33,7 @@ class PushNotificationService:
     """
     Manages web push subscriptions and sends notifications for stock alerts.
     """
-    # In-memory store for subscriptions (for production, use database)
-    _subscriptions: Set[str] = set()
-    
-    # Track notified stocks to avoid duplicate notifications
+    # Track notified stocks to avoid duplicate notifications in a single cycle
     _notified_stocks: Dict[str, float] = {}
     
     @classmethod
@@ -44,62 +45,64 @@ class PushNotificationService:
         }
     
     @classmethod
-    def add_subscription(cls, subscription: dict) -> bool:
+    async def add_subscription(cls, sub_data: dict) -> bool:
         """Add a push subscription, replacing any existing subscription with the same endpoint."""
-        endpoint = subscription.get("endpoint", "")
+        endpoint = sub_data.get("endpoint", "")
+        keys = sub_data.get("keys", {})
         
-        # Remove any existing subscription with the same endpoint
-        cls._remove_by_endpoint(endpoint)
+        async with AsyncSessionLocal() as db:
+            # Remove any existing subscription with the same endpoint
+            await cls._remove_by_endpoint(endpoint, db)
+            
+            # Create new subscription
+            new_sub = PushSubscription(
+                endpoint=endpoint,
+                keys_auth=keys.get("auth"),
+                keys_p256dh=keys.get("p256dh")
+            )
+            db.add(new_sub)
+            await db.commit()
+            
+            print(f"[Push] Subscription added to DB: {endpoint[:50]}...")
+            return True
+    
+    @classmethod
+    async def remove_subscription(cls, sub_data: dict) -> bool:
+        """Remove a push subscription by endpoint."""
+        endpoint = sub_data.get("endpoint", "")
+        async with AsyncSessionLocal() as db:
+            removed = await cls._remove_by_endpoint(endpoint, db)
+            if removed:
+                await db.commit()
+                print(f"[Push] Subscription removed from DB.")
+            return removed
+    
+    @classmethod
+    async def _remove_by_endpoint(cls, endpoint: str, db) -> bool:
+        """Remove all subscriptions matching the given endpoint."""
+        result = await db.execute(select(PushSubscription).where(PushSubscription.endpoint == endpoint))
+        subs = result.scalars().all()
         
-        sub_str = json.dumps(subscription, sort_keys=True)
-        cls._subscriptions.add(sub_str)
-        print(f"[Push] Subscription added for endpoint: {endpoint[:50]}... Total: {len(cls._subscriptions)}")
+        if not subs:
+            return False
+            
+        for sub in subs:
+            await db.delete(sub)
+        
         return True
     
     @classmethod
-    def remove_subscription(cls, subscription: dict) -> bool:
-        """Remove a push subscription by endpoint."""
-        endpoint = subscription.get("endpoint", "")
-        removed = cls._remove_by_endpoint(endpoint)
-        if removed:
-            print(f"[Push] Subscription removed. Total: {len(cls._subscriptions)}")
-        return removed
-    
-    @classmethod
-    def _remove_by_endpoint(cls, endpoint: str) -> bool:
-        """Remove all subscriptions matching the given endpoint."""
-        to_remove = []
-        for sub_str in cls._subscriptions:
-            try:
-                sub = json.loads(sub_str)
-                if sub.get("endpoint") == endpoint:
-                    to_remove.append(sub_str)
-            except:
-                pass
-        
-        for sub_str in to_remove:
-            cls._subscriptions.discard(sub_str)
-        
-        return len(to_remove) > 0
-    
-    @classmethod
-    def get_subscription_count(cls) -> int:
+    async def get_subscription_count(cls) -> int:
         """Get the number of active subscriptions."""
-        return len(cls._subscriptions)
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(PushSubscription))
+            return len(result.scalars().all())
     
     @classmethod
-    def check_and_notify(cls, ticker: str, change_1h: float, change_1d: float) -> None:
+    async def check_and_notify(cls, ticker: str, change_1h: float, change_1d: float) -> None:
         """
         Check if a stock's change exceeds thresholds and send notification if so.
-        
-        Args:
-            ticker: Stock ticker symbol
-            change_1h: 1-hour change percentage
-            change_1d: 1-day change percentage
         """
-        if not cls._subscriptions:
-            return
-        
         if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
             print("[Push] VAPID keys not configured. Skipping notifications.")
             return
@@ -132,38 +135,59 @@ class PushNotificationService:
                 continue
             
             cls._notified_stocks[notif_key] = change_1h if "1h" in notif_key else change_1d
-            cls._send_to_all(notif)
+            await cls._send_to_all(notif)
     
     @classmethod
-    def _send_to_all(cls, notification_data: dict) -> None:
+    async def _send_to_all(cls, notification_data: dict) -> None:
         """Send a notification to all subscribers."""
-        failed_subs = []
-        
-        for sub_str in cls._subscriptions:
-            try:
-                subscription = json.loads(sub_str)
-                webpush(
-                    subscription_info=subscription,
-                    data=json.dumps(notification_data),
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims=VAPID_CLAIMS
-                )
-                print(f"[Push] Sent: {notification_data['title']}")
-            except WebPushException as e:
-                print(f"[Push] Failed to send: {e}")
-                # If subscription is invalid (410 Gone), mark for removal
-                if e.response and e.response.status_code == 410:
-                    failed_subs.append(sub_str)
-            except Exception as e:
-                print(f"[Push] Error: {e}")
-        
-        # Clean up invalid subscriptions
-        for sub in failed_subs:
-            cls._subscriptions.discard(sub)
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(PushSubscription))
+            subs = result.scalars().all()
+            
+            if not subs:
+                return
+
+            failed_subs = []
+            
+            # Send to each subscription
+            for sub in subs:
+                try:
+                    # Reconstruct subscription info for pywebpush
+                    subscription_info = {
+                        "endpoint": sub.endpoint,
+                        "keys": {
+                            "auth": sub.keys_auth,
+                            "p256dh": sub.keys_p256dh
+                        }
+                    }
+                    
+                    # Wrap in to_thread because webpush is a synchronous block
+                    await asyncio.to_thread(
+                        webpush,
+                        subscription_info=subscription_info,
+                        data=json.dumps(notification_data),
+                        vapid_private_key=VAPID_PRIVATE_KEY,
+                        vapid_claims=VAPID_CLAIMS
+                    )
+                    print(f"[Push] Sent: {notification_data['title']} to {sub.endpoint[:30]}...")
+                except WebPushException as e:
+                    print(f"[Push] Failed to send: {e}")
+                    # If subscription is invalid (410 Gone), mark for removal
+                    if e.response and e.response.status_code == 410:
+                        failed_subs.append(sub)
+                except Exception as e:
+                    print(f"[Push] Error: {e}")
+            
+            # Clean up invalid subscriptions
+            if failed_subs:
+                for sub in failed_subs:
+                    await db.delete(sub)
+                await db.commit()
+                print(f"[Push] Cleaned up {len(failed_subs)} failed subscriptions.")
     
     @classmethod
     def clear_notification_cache(cls) -> None:
-        """Clear the notified stocks cache (call periodically)."""
+        """Clear the notified stocks cache."""
         cls._notified_stocks.clear()
     
     @classmethod
