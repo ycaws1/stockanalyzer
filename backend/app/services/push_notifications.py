@@ -46,25 +46,37 @@ class PushNotificationService:
     
     @classmethod
     async def add_subscription(cls, sub_data: dict) -> bool:
-        """Add a push subscription, replacing any existing subscription with the same endpoint."""
+        """Add a push subscription, updating its keys if it already exists."""
         endpoint = sub_data.get("endpoint", "")
         keys = sub_data.get("keys", {})
         
         async with AsyncSessionLocal() as db:
-            # Remove any existing subscription with the same endpoint
-            await cls._remove_by_endpoint(endpoint, db)
+            # Check if subscription already exists for this endpoint
+            result = await db.execute(select(PushSubscription).where(PushSubscription.endpoint == endpoint))
+            existing_sub = result.scalars().first()
             
-            # Create new subscription
-            new_sub = PushSubscription(
-                endpoint=endpoint,
-                keys_auth=keys.get("auth"),
-                keys_p256dh=keys.get("p256dh")
-            )
-            db.add(new_sub)
-            await db.commit()
+            if existing_sub:
+                # Update existing record
+                existing_sub.keys_auth = keys.get("auth")
+                existing_sub.keys_p256dh = keys.get("p256dh")
+                print(f"[Push] Updated existing subscription: {endpoint[:50]}...")
+            else:
+                # Create new record
+                new_sub = PushSubscription(
+                    endpoint=endpoint,
+                    keys_auth=keys.get("auth"),
+                    keys_p256dh=keys.get("p256dh")
+                )
+                db.add(new_sub)
+                print(f"[Push] Added new subscription: {endpoint[:50]}...")
             
-            print(f"[Push] Subscription added to DB: {endpoint[:50]}...")
-            return True
+            try:
+                await db.commit()
+                return True
+            except Exception as e:
+                await db.rollback()
+                print(f"[Push] Error saving subscription: {e}")
+                return False
     
     @classmethod
     async def remove_subscription(cls, sub_data: dict) -> bool:
