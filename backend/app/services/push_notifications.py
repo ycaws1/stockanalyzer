@@ -112,7 +112,7 @@ class PushNotificationService:
             return len(result.scalars().all())
     
     @classmethod
-    async def check_and_notify(cls, ticker: str, change_1h: float, change_1d: float) -> None:
+    async def check_and_notify(cls, ticker: str, change_1h: float, change_1d: float, data_timestamp: datetime = None) -> None:
         """
         Check if a stock's change exceeds thresholds and send notification if so.
         """
@@ -149,8 +149,7 @@ class PushNotificationService:
             
             # Smart deduplication:
             # 1. If never notified, notify.
-            # 2. If notified before, but value has shifted significantly (>0.5%), notify again.
-            # 3. If notified before, but > 4 hours ago, notify again as a reminder.
+            # 2. If it's the EXACT same data point (same time AND same value), NEVER notify (regardless of 4h rule).
             
             should_notify = False
             last_record = cls._notified_stocks.get(notif_key)
@@ -160,17 +159,22 @@ class PushNotificationService:
             else:
                 last_value = last_record["value"]
                 last_time = last_record["timestamp"]
+                last_data_ts = last_record.get("data_timestamp")
                 
-                value_shifted = abs(current_value - last_value) >= 0.5
-                time_passed = datetime.now() - last_time > timedelta(hours=4)
+                # Check if this is technically "new" information
+                is_identical_data = (current_value == last_value) and (data_timestamp == last_data_ts)
                 
-                if value_shifted or time_passed:
+                if is_identical_data:
+                    # Never re-notify for the exact same data point, even after 4 hours.
+                    should_notify = False
+                else:
                     should_notify = True
             
             if should_notify:
                 cls._notified_stocks[notif_key] = {
                     "value": current_value,
-                    "timestamp": datetime.now()
+                    "timestamp": datetime.now(),
+                    "data_timestamp": data_timestamp
                 }
                 await cls._send_to_all(notif)
     

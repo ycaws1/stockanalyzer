@@ -85,11 +85,17 @@ class CacheManager:
                 "score_details": composite_score_data
             }
             
+            # Get the latest data timestamp for strict deduplication
+            latest_ts = None
+            if history_1h and len(history_1h) > 0:
+                latest_ts = history_1h[-1].get("timestamp")
+
             # Check for push notification trigger
             await PushNotificationService.check_and_notify(
                 ticker=stock_ticker,
                 change_1h=change_percent_1h,
-                change_1d=change_percent_1d
+                change_1d=change_percent_1d,
+                data_timestamp=latest_ts
             )
             
             # Update DB
