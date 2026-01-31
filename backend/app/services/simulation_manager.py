@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import AsyncSessionLocal
@@ -120,9 +120,14 @@ class SimulationManager:
         """
         # Initial delay to give the API time to breathe on startup
         await asyncio.sleep(5)
+        # Convert interval_minutes to int in case it comes from env as string
+        interval_minutes = int(interval_minutes)
         while True:
             try:
                 await SimulationManager.process_active_simulations()
             except Exception as e:
                 print(f"Simulation Scheduler Error: {e}")
+            
+            next_update = datetime.now() + timedelta(minutes=interval_minutes)
+            print(f"Next simulation update scheduled for: {next_update.strftime('%Y-%m-%d %H:%M:%S')}")
             await asyncio.sleep(interval_minutes * 60)

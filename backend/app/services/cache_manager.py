@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import AsyncSessionLocal
@@ -122,6 +122,10 @@ class CacheManager:
 
     @staticmethod
     async def start_scheduler(interval_minutes=5):
+        # Convert interval_minutes to int in case it comes from env as string
+        interval_minutes = int(interval_minutes)
         while True:
             await CacheManager.update_all_stocks()
+            next_update = datetime.now() + timedelta(minutes=interval_minutes)
+            print(f"Next cache update scheduled for: {next_update.strftime('%Y-%m-%d %H:%M:%S')}")
             await asyncio.sleep(interval_minutes * 60)
