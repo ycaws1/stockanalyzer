@@ -12,8 +12,8 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [newTicker, setNewTicker] = useState('');
     const [adding, setAdding] = useState(false);
-    const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('composite');
-    const [trendView, setTrendView] = useState<'1H' | '1D'>('1H');
+    const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('change');
+    const [trendView, setTrendView] = useState<'1H' | '1D'>('1D');
     const [allExpanded, setAllExpanded] = useState<boolean | undefined>(undefined);
     const pushNotifications = usePushNotifications();
 

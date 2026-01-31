@@ -20,7 +20,7 @@ async def list_stocks(db: AsyncSession = Depends(get_db)):
     return [{"ticker": s.ticker, "company_name": s.company_name, "sector": s.sector} for s in stocks]
 
 @router.get("/overview")
-async def get_stocks_overview(interval: str = "1h", db: AsyncSession = Depends(get_db)):
+async def get_stocks_overview(interval: str = "1d", db: AsyncSession = Depends(get_db)):
     """Get all cached analysis for all stocks in watchlist based on interval (1d or 1h)"""
     import json
     result = await db.execute(select(Stock))
@@ -103,7 +103,7 @@ async def get_stock_history(ticker: str, period: str = "1mo", interval: str = "1
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{ticker}/analysis")
-async def get_stock_analysis(ticker: str, interval: str = "1h", db: AsyncSession = Depends(get_db)):
+async def get_stock_analysis(ticker: str, interval: str = "1d", db: AsyncSession = Depends(get_db)):
     try:
         # Determine fetch parameters based on requested interval
         if interval == "1h":

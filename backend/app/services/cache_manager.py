@@ -116,8 +116,6 @@ class CacheManager:
                 # Sleep briefly to avoid rate limits
                 await asyncio.sleep(2) 
         
-        # Clear notification cache after each cycle to allow new notifications
-        PushNotificationService.clear_notification_cache()
         print("Finished background cache update.")
 
     @staticmethod

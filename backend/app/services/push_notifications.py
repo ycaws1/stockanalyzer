@@ -33,8 +33,9 @@ class PushNotificationService:
     """
     Manages web push subscriptions and sends notifications for stock alerts.
     """
-    # Track notified stocks to avoid duplicate notifications in a single cycle
-    _notified_stocks: Dict[str, float] = {}
+    # Track notified stocks to avoid duplicate notifications
+    # Format: { "ticker-tag": {"value": 2.5, "timestamp": datetime} }
+    _notified_stocks: Dict[str, dict] = {}
     
     @classmethod
     def get_thresholds(cls) -> dict:
@@ -139,15 +140,39 @@ class PushNotificationService:
                 "tag": f"{ticker}-1d"
             })
         
+        from datetime import datetime, timedelta
+
         # Send notifications
         for notif in notifications:
-            # Avoid duplicate notifications for the same event
             notif_key = notif["tag"]
-            if notif_key in cls._notified_stocks:
-                continue
+            current_value = change_1h if "1h" in notif_key else change_1d
             
-            cls._notified_stocks[notif_key] = change_1h if "1h" in notif_key else change_1d
-            await cls._send_to_all(notif)
+            # Smart deduplication:
+            # 1. If never notified, notify.
+            # 2. If notified before, but value has shifted significantly (>0.5%), notify again.
+            # 3. If notified before, but > 4 hours ago, notify again as a reminder.
+            
+            should_notify = False
+            last_record = cls._notified_stocks.get(notif_key)
+            
+            if not last_record:
+                should_notify = True
+            else:
+                last_value = last_record["value"]
+                last_time = last_record["timestamp"]
+                
+                value_shifted = abs(current_value - last_value) >= 0.5
+                time_passed = datetime.now() - last_time > timedelta(hours=4)
+                
+                if value_shifted or time_passed:
+                    should_notify = True
+            
+            if should_notify:
+                cls._notified_stocks[notif_key] = {
+                    "value": current_value,
+                    "timestamp": datetime.now()
+                }
+                await cls._send_to_all(notif)
     
     @classmethod
     async def _send_to_all(cls, notification_data: dict) -> None:
