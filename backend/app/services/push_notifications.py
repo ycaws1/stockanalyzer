@@ -10,7 +10,7 @@ from pywebpush import webpush, WebPushException
 from sqlalchemy.future import select
 from ..database import AsyncSessionLocal
 from ..models import PushSubscription
-
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before reading env vars
 
@@ -139,8 +139,6 @@ class PushNotificationService:
                 "body": f"{direction} {abs(change_1d):.2f}% today",
                 "tag": f"{ticker}-1d"
             })
-        
-        from datetime import datetime, timedelta
 
         # Send notifications
         for notif in notifications:
