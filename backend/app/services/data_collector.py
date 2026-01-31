@@ -1,15 +1,23 @@
+import asyncio
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 
 class DataCollector:
+    # Limit to 2 concurrent requests globally to avoid IP bans
+    _semaphore = asyncio.Semaphore(5)
+
     @staticmethod
     async def fetch_stock_data(ticker: str, period="1mo", interval="1d"):
         """
         Fetches historical market data for a given ticker.
         """
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period=period, interval=interval)
+        async with DataCollector._semaphore:
+            stock = yf.Ticker(ticker)
+            # yfinance calls are blocking; wrap in to_thread to keep the event loop responsive
+            hist = await asyncio.to_thread(stock.history, period=period, interval=interval)
+            # Small delay to ensure we don't burst too fast
+            await asyncio.sleep(0.5)
         
         # Convert to list of dicts or standard format
         data = []
@@ -29,9 +37,11 @@ class DataCollector:
         """
         Fetches company metadata and key financial metrics.
         """
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return {
+        async with DataCollector._semaphore:
+            stock = yf.Ticker(ticker)
+            info = await asyncio.to_thread(getattr, stock, 'info')
+            await asyncio.sleep(0.5)
+            return {
             "name": info.get("shortName") or info.get("longName"),
             "sector": info.get("sector"),
             "market_cap": info.get("marketCap"),
@@ -52,8 +62,10 @@ class DataCollector:
         Fetches news for a given ticker.
         Uses yfinance news if available, or mocks it.
         """
-        stock = yf.Ticker(ticker)
-        news_items = stock.news
+        async with DataCollector._semaphore:
+            stock = yf.Ticker(ticker)
+            news_items = await asyncio.to_thread(getattr, stock, 'news')
+            await asyncio.sleep(0.5)
         
         formatted_news = []
         if news_items:

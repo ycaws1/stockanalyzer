@@ -43,47 +43,68 @@ class CacheManager:
                 if 'published_at' in news_item and hasattr(news_item['published_at'], 'isoformat'):
                     news_item['published_at'] = news_item['published_at'].isoformat()
                 serializable_news.append(news_item)
-            
-            # Calculate price and change percent for 1D
-            current_price = info.get("current_price")
-            prev_close = info.get("previous_close")
-            change_percent_1d = 0
-            if current_price and prev_close:
-                change_percent_1d = ((current_price - prev_close) / prev_close) * 100
-            elif history_1d and len(history_1d) >= 2:
-                latest = history_1d[-1]["close"]
-                prev = history_1d[-2]["close"]
-                change_percent_1d = ((latest - prev) / prev) * 100
-                if not current_price:
-                    current_price = latest
-            
-            # Calculate 1H change percent
-            change_percent_1h = 0
-            if history_1h and len(history_1h) >= 2:
-                latest_1h = history_1h[-1]["close"]
-                prev_1h = history_1h[-2]["close"]
-                change_percent_1h = ((latest_1h - prev_1h) / prev_1h) * 100
 
-            # Construct Analysis Object (using 1d change as default)
-            analysis_data = {
-                "ticker": stock_ticker,
-                "price": current_price or 0,
-                "change_percent": change_percent_1d,
-                "change_percent_1h": change_percent_1h,
-                "change_percent_1d": change_percent_1d,
-                "average_sentiment": avg_sentiment,
-                "sentiment_label": "Bullish" if composite_score_data["technical"]["score"] > 60 else "Bearish" if composite_score_data["technical"]["score"] < 40 else "Neutral",
-                "technicals": technicals,
-                "company_info": info,
-                "news": serializable_news,
-                "score": composite_score_data["composite_score"],
-                "score_breakdown": {
-                    "technical": composite_score_data["technical"]["score"],
-                    "sentiment": composite_score_data["sentiment"]["score"],
-                    "financial": composite_score_data["financial"]["score"]
-                },
-                "score_details": composite_score_data
+            # Function to build analysis object (similar to stocks.py)
+            def build_analysis_response(hist, intv, info_data, avg_sent, news_list):
+                # Technicals
+                tech_data = Analyzer.calculate_technicals(hist)
+                # Composite
+                comp_score = Analyzer.calculate_composite_score(hist, avg_sent, info_data)
+                
+                # Price & Change
+                current_price = info_data.get("current_price")
+                change_percent = 0
+                
+                if intv == "1h":
+                     if hist and len(hist) >= 2:
+                        latest = hist[-1]["close"]
+                        prev = hist[-2]["close"]
+                        if prev and prev != 0:
+                            change_percent = ((latest - prev) / prev) * 100
+                        current_price = latest
+                else: # 1d
+                    prev_close = info_data.get("previous_close")
+                    if current_price and prev_close:
+                        change_percent = ((current_price - prev_close) / prev_close) * 100
+                    elif hist and len(hist) >= 2:
+                        latest = hist[-1]["close"]
+                        prev = hist[-2]["close"]
+                        change_percent = ((latest - prev) / prev) * 100
+                        if not current_price:
+                            current_price = latest
+                
+                return {
+                    "ticker": stock_ticker,
+                    "period": intv,
+                    "price": current_price or 0,
+                    "change_percent": change_percent,
+                    "average_sentiment": avg_sent,
+                    "sentiment_label": "Bullish" if comp_score["technical"]["score"] > 60 else "Bearish" if comp_score["technical"]["score"] < 40 else "Neutral",
+                    "technicals": tech_data,
+                    "company_info": info_data,
+                    "news": news_list,
+                    "score": comp_score["composite_score"],
+                    "score_breakdown": {
+                        "technical": comp_score["technical"]["score"],
+                        "sentiment": comp_score["sentiment"]["score"],
+                        "financial": comp_score["financial"]["score"]
+                    },
+                    "score_details": comp_score
+                }
+
+            # Build both responses
+            response_1h = build_analysis_response(history_1h, "1h", info, avg_sentiment, serializable_news)
+            response_1d = build_analysis_response(history_1d, "1d", info, avg_sentiment, serializable_news)
+            
+            # Construct registry
+            cached_registry = {
+                "1h": response_1h,
+                "1d": response_1d
             }
+
+            # Get 1h/1d changes for push notification check
+            change_percent_1h = response_1h["change_percent"]
+            change_percent_1d = response_1d["change_percent"]
             
             # Get the latest data timestamp for strict deduplication
             latest_ts = None
@@ -102,7 +123,7 @@ class CacheManager:
             result = await db.execute(select(Stock).where(Stock.ticker == stock_ticker))
             stock = result.scalars().first()
             if stock:
-                stock.cached_analysis = json.dumps(analysis_data)
+                stock.cached_analysis = json.dumps(cached_registry)
                 stock.last_updated = datetime.now()
                 await db.commit()
                 print(f"Updated cache for {stock_ticker}")
