@@ -7,7 +7,12 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# When using Supabase Pooler (Transaction mode), we must disable prepared statements
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=False,
+    prepared_statement_cache_size=0
+)
 
 AsyncSessionLocal = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
