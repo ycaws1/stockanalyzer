@@ -11,6 +11,7 @@ export default function Dashboard() {
     const [stocks, setStocks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [newTicker, setNewTicker] = useState('');
+    const [filterTerm, setFilterTerm] = useState('');
     const [adding, setAdding] = useState(false);
     const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('change');
     const [trendView, setTrendView] = useState<'1H' | '1D'>('1D');
@@ -154,11 +155,19 @@ export default function Dashboard() {
         }
     };
 
-    const getSortedStocks = () => {
-        const sorted = [...stocks];
+    const getFilteredAndSortedStocks = () => {
+        let filtered = [...stocks];
+
+        if (filterTerm) {
+            filtered = filtered.filter(s =>
+                s.ticker.toLowerCase().includes(filterTerm.toLowerCase()) ||
+                s.name.toLowerCase().includes(filterTerm.toLowerCase())
+            );
+        }
+
         switch (sortMethod) {
             case 'marketCap':
-                return sorted.sort((a, b) => {
+                return filtered.sort((a, b) => {
                     const getCap = (s: any) => {
                         if (s.marketCap === 'N/A') return 0;
                         const val = parseFloat(s.marketCap);
@@ -167,15 +176,17 @@ export default function Dashboard() {
                     return getCap(b) - getCap(a);
                 });
             case 'change':
-                return sorted.sort((a, b) => b.changePercent - a.changePercent);
+                return filtered.sort((a, b) => b.changePercent - a.changePercent);
             case 'sentiment':
-                return sorted.sort((a, b) => (b.scoreBreakdown?.sentiment || 0) - (a.scoreBreakdown?.sentiment || 0));
+                return filtered.sort((a, b) => (b.scoreBreakdown?.sentiment || 0) - (a.scoreBreakdown?.sentiment || 0));
             case 'composite':
-                return sorted.sort((a, b) => b.score - a.score);
+                return filtered.sort((a, b) => b.score - a.score);
             default:
-                return sorted;
+                return filtered;
         }
     };
+
+    const filteredAndSortedStocks = getFilteredAndSortedStocks();
 
     return (
         <div className={`container ${styles.dashboard}`}>
@@ -321,6 +332,42 @@ export default function Dashboard() {
                             <option value="composite">Composite Score</option>
                         </select>
 
+                        {/* Filter Stocks */}
+                        <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
+                            <input
+                                value={filterTerm}
+                                onChange={(e) => setFilterTerm(e.target.value)}
+                                placeholder="Filter watchlist..."
+                                style={{
+                                    background: 'rgba(255,255,255,0.05)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    padding: '0.5rem',
+                                    paddingRight: filterTerm ? '2rem' : '0.5rem',
+                                    borderRadius: '6px',
+                                    color: 'white',
+                                    width: '150px'
+                                }}
+                            />
+                            {filterTerm && (
+                                <button
+                                    onClick={() => setFilterTerm('')}
+                                    style={{
+                                        position: 'absolute',
+                                        right: '8px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        padding: '4px'
+                                    }}
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+
                         {/* Add Stock */}
                         <div style={{ display: 'flex', gap: '8px' }}>
                             <input
@@ -361,9 +408,13 @@ export default function Dashboard() {
                         <p>Your watchlist is empty.</p>
                         <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Add a ticker symbol above to get started.</p>
                     </div>
+                ) : filteredAndSortedStocks.length === 0 ? (
+                    <div className={styles.emptyState} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                        <p>No symbols matching "{filterTerm}"</p>
+                    </div>
                 ) : (
                     <div className={styles.grid}>
-                        {getSortedStocks().map((stock) => (
+                        {filteredAndSortedStocks.map((stock: any) => (
                             <div key={stock.ticker} style={{ position: 'relative', width: '100%', maxWidth: '350px', margin: '0 auto' }}>
                                 <button
                                     onClick={(e) => {
