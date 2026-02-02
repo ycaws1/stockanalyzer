@@ -14,6 +14,7 @@ export default function Dashboard() {
     const [filterTerm, setFilterTerm] = useState('');
     const [adding, setAdding] = useState(false);
     const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('change');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [trendView, setTrendView] = useState<'1H' | '1D'>('1D');
     const [allExpanded, setAllExpanded] = useState<boolean | undefined>(undefined);
     const pushNotifications = usePushNotifications();
@@ -165,25 +166,38 @@ export default function Dashboard() {
             );
         }
 
+        const isAsc = sortDirection === 'asc';
+
         switch (sortMethod) {
             case 'marketCap':
-                return filtered.sort((a, b) => {
+                filtered.sort((a, b) => {
                     const getCap = (s: any) => {
                         if (s.marketCap === 'N/A') return 0;
                         const val = parseFloat(s.marketCap);
                         return s.marketCap.includes('T') ? val * 1000 : val;
                     };
-                    return getCap(b) - getCap(a);
+                    const valA = getCap(a);
+                    const valB = getCap(b);
+                    return isAsc ? valA - valB : valB - valA;
                 });
+                break;
             case 'change':
-                return filtered.sort((a, b) => b.changePercent - a.changePercent);
+                filtered.sort((a, b) => isAsc ? a.changePercent - b.changePercent : b.changePercent - a.changePercent);
+                break;
             case 'sentiment':
-                return filtered.sort((a, b) => (b.scoreBreakdown?.sentiment || 0) - (a.scoreBreakdown?.sentiment || 0));
+                filtered.sort((a, b) => {
+                    const valA = a.scoreBreakdown?.sentiment || 0;
+                    const valB = b.scoreBreakdown?.sentiment || 0;
+                    return isAsc ? valA - valB : valB - valA;
+                });
+                break;
             case 'composite':
-                return filtered.sort((a, b) => b.score - a.score);
+                filtered.sort((a, b) => isAsc ? a.score - b.score : b.score - a.score);
+                break;
             default:
-                return filtered;
+                break;
         }
+        return filtered;
     };
 
     const filteredAndSortedStocks = getFilteredAndSortedStocks();
@@ -313,24 +327,49 @@ export default function Dashboard() {
                         </select>
 
                         {/* Sort Controls */}
-                        <select
-                            value={sortMethod}
-                            onChange={(e) => setSortMethod(e.target.value as any)}
-                            style={{
-                                background: 'rgba(255,255,255,0.05)',
-                                color: 'var(--text-muted)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                padding: '0.5rem',
-                                borderRadius: '6px',
-                                outline: 'none'
-                            }}
-                        >
-                            <option value="default">Sort by...</option>
-                            <option value="marketCap">Market Cap</option>
-                            <option value="change">Change %</option>
-                            <option value="sentiment">Sentiment Score</option>
-                            <option value="composite">Composite Score</option>
-                        </select>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                            <select
+                                value={sortMethod}
+                                onChange={(e) => setSortMethod(e.target.value as any)}
+                                style={{
+                                    background: 'rgba(255,255,255,0.05)',
+                                    color: 'var(--text-muted)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    padding: '0.5rem',
+                                    borderRadius: '6px',
+                                    outline: 'none'
+                                }}
+                            >
+                                <option value="default">Sort by...</option>
+                                <option value="marketCap">Market Cap</option>
+                                <option value="change">Change %</option>
+                                <option value="sentiment">Sentiment Score</option>
+                                <option value="composite">Composite Score</option>
+                            </select>
+                            {sortMethod !== 'default' && (
+                                <button
+                                    onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                    className={styles.sortToggle}
+                                    style={{
+                                        background: 'rgba(255,255,255,0.05)',
+                                        color: 'var(--text-muted)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        padding: '0.5rem 0.8rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        transition: 'all 0.2s ease',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minWidth: '36px'
+                                    }}
+                                    title={sortDirection === 'asc' ? 'Sorting Ascending (Click for Descending)' : 'Sorting Descending (Click for Ascending)'}
+                                >
+                                    {sortDirection === 'asc' ? '↑' : '↓'}
+                                </button>
+                            )}
+                        </div>
 
                         {/* Filter Stocks */}
                         <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
