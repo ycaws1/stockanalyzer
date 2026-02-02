@@ -147,7 +147,9 @@ class PushNotificationService:
             
             # Smart deduplication:
             # 1. If never notified, notify.
-            # 2. If it's the EXACT same data point (same time AND same value), NEVER notify (regardless of 4h rule).
+            # 2. If it's the EXACT same data point (same time AND same value), NEVER notify.
+            # 3. If within 4 hours, only notify if the change is significant (>= 1.0%).
+            # 4. If after 4 hours, notify if there is new data.
             
             should_notify = False
             last_record = cls._notified_stocks.get(notif_key)
@@ -159,14 +161,28 @@ class PushNotificationService:
                 last_time = last_record["timestamp"]
                 last_data_ts = last_record.get("data_timestamp")
                 
-                # Check if this is technically "new" information
-                is_identical_data = (current_value == last_value) and (data_timestamp == last_data_ts)
+                # Check for identical data (delta check for floats)
+                is_identical_data = (abs(current_value - last_value) < 0.001) and (data_timestamp == last_data_ts)
                 
                 if is_identical_data:
-                    # Never re-notify for the exact same data point, even after 4 hours.
                     should_notify = False
                 else:
-                    should_notify = True
+                    time_since_last = datetime.now() - last_time
+                    is_new_data = (data_timestamp != last_data_ts)
+                    
+                    if time_since_last < timedelta(hours=4):
+                        # Within 4h cooldown: Only notify if it's a significant move since last alert (>= 1.0%)
+                        # This prevents "fluttering" notifications as the current bar ticks up and down.
+                        if abs(current_value - last_value) >= 1.0:
+                            should_notify = True
+                            print(f"[Push] Significant change detected for {notif_key}: {last_value:.2f}% -> {current_value:.2f}%")
+                        else:
+                            should_notify = False
+                    else:
+                        # After 4h: Re-notify if still above threshold and we have newer data
+                        should_notify = is_new_data
+                        if should_notify:
+                            print(f"[Push] 4h cooldown expired for {notif_key}, sending reminder.")
             
             if should_notify:
                 cls._notified_stocks[notif_key] = {
