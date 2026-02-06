@@ -9,7 +9,7 @@ from typing import Dict, Set, List
 from pywebpush import webpush, WebPushException
 from sqlalchemy.future import select
 from ..database import AsyncSessionLocal
-from ..models import PushSubscription
+from ..models import PushSubscription, NotificationLog
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before reading env vars
@@ -201,6 +201,14 @@ class PushNotificationService:
                     "timestamp": datetime.now(),
                     "data_timestamp": data_timestamp
                 }
+                # Log to DB
+                await cls._log_notification(
+                    ticker=ticker,
+                    title=notif["title"],
+                    body=notif["body"],
+                    tag=notif["tag"],
+                    value=current_value
+                )
                 await cls._send_to_all(notif)
     
     @classmethod
@@ -250,6 +258,46 @@ class PushNotificationService:
                     await db.delete(sub)
                 await db.commit()
                 print(f"[Push] Cleaned up {len(failed_subs)} failed subscriptions.")
+
+    @classmethod
+    async def _log_notification(cls, ticker: str, title: str, body: str, tag: str, value: float):
+        """Log a notification to the database."""
+        async with AsyncSessionLocal() as db:
+            new_log = NotificationLog(
+                ticker=ticker,
+                title=title,
+                body=body,
+                tag=tag,
+                value=value
+            )
+            db.add(new_log)
+            try:
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                print(f"[Push] Error logging notification: {e}")
+
+    @classmethod
+    async def get_history(cls, limit: int = 50) -> List[dict]:
+        """Fetch the latest notification history."""
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import desc
+            result = await db.execute(
+                select(NotificationLog).order_by(desc(NotificationLog.timestamp)).limit(limit)
+            )
+            logs = result.scalars().all()
+            return [
+                {
+                    "id": log.id,
+                    "ticker": log.ticker,
+                    "title": log.title,
+                    "body": log.body,
+                    "tag": log.tag,
+                    "value": log.value,
+                    "timestamp": log.timestamp.isoformat() if log.timestamp else None
+                }
+                for log in logs
+            ]
     
     @classmethod
     def clear_notification_cache(cls) -> None:

@@ -163,3 +163,7 @@ async def test_direct_notification(title: str = "Test Alert", body: str = "This 
         "message": f"Direct notification sent to {count} subscriber(s)",
         "notification": notification
     }
+@router.get("/history")
+async def get_history(limit: int = 50):
+    """Get the latest notification history."""
+    return await PushNotificationService.get_history(limit=limit)

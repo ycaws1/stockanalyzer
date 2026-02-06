@@ -2,8 +2,8 @@ import React from 'react';
 import styles from './NavBar.module.css';
 
 interface NavBarProps {
-    activeTab: 'market' | 'trade';
-    onTabChange: (tab: 'market' | 'trade') => void;
+    activeTab: 'market' | 'trade' | 'notifications';
+    onTabChange: (tab: 'market' | 'trade' | 'notifications') => void;
 }
 
 export default function NavBar({ activeTab, onTabChange }: NavBarProps) {
@@ -24,6 +24,15 @@ export default function NavBar({ activeTab, onTabChange }: NavBarProps) {
                 <span className={styles.icon}>🤝</span>
                 <span>Trade</span>
             </button>
+
+            <button
+                className={`${styles.navItem} ${activeTab === 'notifications' ? styles.active : ''}`}
+                onClick={() => onTabChange('notifications')}
+            >
+                <span className={styles.icon}>🔔</span>
+                <span>History</span>
+            </button>
         </nav>
     );
 }
+

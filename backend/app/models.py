@@ -90,3 +90,13 @@ class PushSubscription(Base) :
     keys_p256dh = Column(String) # p256dh key
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class NotificationLog(Base):
+    __tablename__ = "notification_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    title = Column(String)
+    body = Column(String)
+    tag = Column(String)
+    value = Column(Float)
+    timestamp = Column(DateTime, default=datetime.utcnow)
