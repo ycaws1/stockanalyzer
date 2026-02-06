@@ -23,6 +23,13 @@ THRESHOLD_1H = float(os.getenv('ALERT_THRESHOLD_1H', '2.0'))
 # 1D Change Threshold (in percent) - triggers notification if |change| > this value
 THRESHOLD_1D = float(os.getenv('ALERT_THRESHOLD_1D', '3.5'))
 
+# Cooldown window (in hours) - time before we send another reminder for the same stock
+COOLDOWN_HOURS = int(os.getenv('ALERT_COOLDOWN_HOURS', '4'))
+
+# Renotify Threshold (in percent) - additional move required within cooldown to re-notify
+RENOTIFY_THRESHOLD = float(os.getenv('ALERT_RENOTIFY_THRESHOLD', '1.0'))
+
+
 # VAPID Keys - Generate your own at https://vapidkeys.com/
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
@@ -42,8 +49,11 @@ class PushNotificationService:
         """Return current threshold configuration."""
         return {
             "threshold_1h": THRESHOLD_1H,
-            "threshold_1d": THRESHOLD_1D
+            "threshold_1d": THRESHOLD_1D,
+            "cooldown_hours": COOLDOWN_HOURS,
+            "renotify_threshold": RENOTIFY_THRESHOLD
         }
+
     
     @classmethod
     async def add_subscription(cls, sub_data: dict) -> bool:
@@ -170,19 +180,20 @@ class PushNotificationService:
                     time_since_last = datetime.now() - last_time
                     is_new_data = (data_timestamp != last_data_ts)
                     
-                    if time_since_last < timedelta(hours=4):
-                        # Within 4h cooldown: Only notify if it's a significant move since last alert (>= 1.0%)
+                    if time_since_last < timedelta(hours=COOLDOWN_HOURS):
+                        # Within cooldown: Only notify if it's a significant move since last alert (>= RENOTIFY_THRESHOLD)
                         # This prevents "fluttering" notifications as the current bar ticks up and down.
-                        if abs(current_value - last_value) >= 1.0:
+                        if abs(current_value - last_value) >= RENOTIFY_THRESHOLD:
                             should_notify = True
                             print(f"[Push] Significant change detected for {notif_key}: {last_value:.2f}% -> {current_value:.2f}%")
                         else:
                             should_notify = False
                     else:
-                        # After 4h: Re-notify if still above threshold and we have newer data
+                        # After cooldown: Re-notify if still above threshold and we have newer data
                         should_notify = is_new_data
                         if should_notify:
-                            print(f"[Push] 4h cooldown expired for {notif_key}, sending reminder.")
+                            print(f"[Push] {COOLDOWN_HOURS}h cooldown expired for {notif_key}, sending reminder.")
+
             
             if should_notify:
                 cls._notified_stocks[notif_key] = {
