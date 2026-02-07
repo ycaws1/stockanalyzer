@@ -167,3 +167,18 @@ async def test_direct_notification(title: str = "Test Alert", body: str = "This 
 async def get_history(limit: int = 50):
     """Get the latest notification history."""
     return await PushNotificationService.get_history(limit=limit)
+
+
+@router.post("/reset-all")
+async def reset_all():
+    """Clear all subscriptions and notification cache."""
+    count = await PushNotificationService.clear_all_subscriptions()
+    PushNotificationService.clear_notification_cache()
+    return {"success": True, "message": f"Cleared {count} subscriptions and reset notification cache"}
+
+
+@router.post("/clear-history")
+async def clear_history():
+    """Delete all notification logs."""
+    count = await PushNotificationService.delete_history()
+    return {"success": True, "message": f"Deleted {count} notification logs"}

@@ -120,7 +120,39 @@ class PushNotificationService:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(PushSubscription))
             return len(result.scalars().all())
-    
+
+    @classmethod
+    async def initialize_cache(cls):
+        """
+        Initialize the in-memory cache from the database logs.
+        This prevents duplicate notifications after a server restart.
+        """
+        async with AsyncSessionLocal() as db:
+            # Get the latest notification for each ticker/tag combination
+            # We use a subquery to get the latest ID for each tag
+            from sqlalchemy import func
+            
+            subquery = select(
+                NotificationLog.tag,
+                func.max(NotificationLog.id).label("max_id")
+            ).group_by(NotificationLog.tag).subquery()
+            
+            query = select(NotificationLog).join(
+                subquery,
+                NotificationLog.id == subquery.c.max_id
+            )
+            
+            result = await db.execute(query)
+            logs = result.scalars().all()
+            
+            for log in logs:
+                cls._notified_stocks[log.tag] = {
+                    "value": log.value,
+                    "timestamp": log.timestamp,
+                    "data_timestamp": None  # We don't store data_timestamp in DB yet
+                }
+            print(f"[Push] Initialized cache with {len(logs)} recent notifications from DB.")
+
     @classmethod
     async def check_and_notify(cls, ticker: str, change_1h: float, change_1d: float, data_timestamp: datetime = None) -> None:
         """
@@ -158,7 +190,7 @@ class PushNotificationService:
             # Smart deduplication:
             # 1. If never notified, notify.
             # 2. If it's the EXACT same data point (same time AND same value), NEVER notify.
-            # 3. If within 4 hours, only notify if the change is significant (>= 1.0%).
+            # 3. If within 4 hours, only notify if the change is significant (>= RENOTIFY_THRESHOLD).
             # 4. If after 4 hours, notify if there is new data.
             
             should_notify = False
@@ -166,23 +198,24 @@ class PushNotificationService:
             
             if not last_record:
                 should_notify = True
+                print(f"[Push] First notification for {notif_key} (or cache empty)")
             else:
                 last_value = last_record["value"]
                 last_time = last_record["timestamp"]
                 last_data_ts = last_record.get("data_timestamp")
                 
                 # Check for identical data (delta check for floats)
-                is_identical_data = (abs(current_value - last_value) < 0.001) and (data_timestamp == last_data_ts)
+                # Note: if last_data_ts is None (loaded from DB), we skip this check and rely on value/time
+                is_identical_data = (abs(current_value - last_value) < 0.001) and (data_timestamp == last_data_ts) if last_data_ts else False
                 
                 if is_identical_data:
                     should_notify = False
                 else:
                     time_since_last = datetime.now() - last_time
-                    is_new_data = (data_timestamp != last_data_ts)
+                    is_new_data = (data_timestamp != last_data_ts) if (data_timestamp and last_data_ts) else True
                     
                     if time_since_last < timedelta(hours=COOLDOWN_HOURS):
                         # Within cooldown: Only notify if it's a significant move since last alert (>= RENOTIFY_THRESHOLD)
-                        # This prevents "fluttering" notifications as the current bar ticks up and down.
                         if abs(current_value - last_value) >= RENOTIFY_THRESHOLD:
                             should_notify = True
                             print(f"[Push] Significant change detected for {notif_key}: {last_value:.2f}% -> {current_value:.2f}%")
@@ -210,6 +243,7 @@ class PushNotificationService:
                     value=current_value
                 )
                 await cls._send_to_all(notif)
+
     
     @classmethod
     async def _send_to_all(cls, notification_data: dict) -> None:
@@ -298,6 +332,28 @@ class PushNotificationService:
                 }
                 for log in logs
             ]
+    
+    @classmethod
+    async def clear_all_subscriptions(cls) -> int:
+        """Remove all subscriptions from the database."""
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import delete
+            result = await db.execute(delete(PushSubscription))
+            count = result.rowcount
+            await db.commit()
+            print(f"[Push] Cleared {count} subscriptions.")
+            return count
+
+    @classmethod
+    async def delete_history(cls) -> int:
+        """Delete all notification history logs."""
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import delete
+            result = await db.execute(delete(NotificationLog))
+            count = result.rowcount
+            await db.commit()
+            print(f"[Push] Deleted {count} history logs.")
+            return count
     
     @classmethod
     def clear_notification_cache(cls) -> None:

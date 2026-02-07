@@ -17,6 +17,10 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Initialize Notification Cache
+    from .services.push_notifications import PushNotificationService
+    await PushNotificationService.initialize_cache()
+
     # Start Background Tasks
     interval_minutes = os.getenv('CACHE_INTERVAL_MINUTES', 5)
     cache_task = asyncio.create_task(CacheManager.start_scheduler(interval_minutes=interval_minutes))
