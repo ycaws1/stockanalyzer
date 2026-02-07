@@ -164,9 +164,9 @@ async def test_direct_notification(title: str = "Test Alert", body: str = "This 
         "notification": notification
     }
 @router.get("/history")
-async def get_history(limit: int = 50):
-    """Get the latest notification history."""
-    return await PushNotificationService.get_history(limit=limit)
+async def get_history(limit: int = 50, ticker: Optional[str] = None):
+    """Get the latest notification history, optionally filtered by ticker."""
+    return await PushNotificationService.get_history(limit=limit, ticker=ticker)
 
 
 @router.post("/reset-all")

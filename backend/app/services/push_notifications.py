@@ -312,13 +312,17 @@ class PushNotificationService:
                 print(f"[Push] Error logging notification: {e}")
 
     @classmethod
-    async def get_history(cls, limit: int = 50) -> List[dict]:
-        """Fetch the latest notification history."""
+    async def get_history(cls, limit: int = 50, ticker: str = None) -> List[dict]:
+        """Fetch the latest notification history, optionally filtered by ticker."""
         async with AsyncSessionLocal() as db:
             from sqlalchemy import desc
-            result = await db.execute(
-                select(NotificationLog).order_by(desc(NotificationLog.timestamp)).limit(limit)
-            )
+            
+            query = select(NotificationLog).order_by(desc(NotificationLog.timestamp)).limit(limit)
+            
+            if ticker:
+                query = query.where(NotificationLog.ticker == ticker.upper())
+                
+            result = await db.execute(query)
             logs = result.scalars().all()
             return [
                 {
