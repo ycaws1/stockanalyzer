@@ -10,7 +10,7 @@ from pywebpush import webpush, WebPushException
 from sqlalchemy.future import select
 from ..database import AsyncSessionLocal
 from ..models import PushSubscription, NotificationLog
-from datetime import datetime, timedelta
+from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before reading env vars
 
@@ -23,10 +23,7 @@ THRESHOLD_1H = float(os.getenv('ALERT_THRESHOLD_1H', '2.0'))
 # 1D Change Threshold (in percent) - triggers notification if |change| > this value
 THRESHOLD_1D = float(os.getenv('ALERT_THRESHOLD_1D', '3.5'))
 
-# Cooldown window (in hours) - time before we send another reminder for the same stock
-COOLDOWN_HOURS = int(os.getenv('ALERT_COOLDOWN_HOURS', '4'))
-
-# Renotify Threshold (in percent) - additional move required within cooldown to re-notify
+# Renotify Threshold (in percent) - additional move required within same bucket to re-notify
 RENOTIFY_THRESHOLD = float(os.getenv('ALERT_RENOTIFY_THRESHOLD', '1.0'))
 
 
@@ -50,7 +47,6 @@ class PushNotificationService:
         return {
             "threshold_1h": THRESHOLD_1H,
             "threshold_1d": THRESHOLD_1D,
-            "cooldown_hours": COOLDOWN_HOURS,
             "renotify_threshold": RENOTIFY_THRESHOLD
         }
 
@@ -186,12 +182,20 @@ class PushNotificationService:
         for notif in notifications:
             notif_key = notif["tag"]
             current_value = change_1h if "1h" in notif_key else change_1d
+            normalized_data_ts = None
+            if data_timestamp:
+                if "1d" in notif_key:
+                    # For 1D alerts, dedupe by date only
+                    normalized_data_ts = data_timestamp.date()
+                else:
+                    # For 1H alerts, dedupe by hour
+                    normalized_data_ts = data_timestamp.replace(minute=0, second=0, microsecond=0)
             
             # Smart deduplication:
             # 1. If never notified, notify.
             # 2. If it's the EXACT same data point (same time AND same value), NEVER notify.
-            # 3. If within 4 hours, only notify if the change is significant (>= RENOTIFY_THRESHOLD).
-            # 4. If after 4 hours, notify if there is new data.
+            # 3. Within same bucket, only re-notify if move exceeds RENOTIFY_THRESHOLD.
+            # 4. For a new bucket, notify.
             
             should_notify = False
             last_record = cls._notified_stocks.get(notif_key)
@@ -206,33 +210,23 @@ class PushNotificationService:
                 
                 # Check for identical data (delta check for floats)
                 # Note: if last_data_ts is None (loaded from DB), we skip this check and rely on value/time
-                is_identical_data = (abs(current_value - last_value) < 0.001) and (data_timestamp == last_data_ts) if last_data_ts else False
+                is_identical_data = (abs(current_value - last_value) < 0.001) and (normalized_data_ts == last_data_ts) if last_data_ts else False
                 
                 if is_identical_data:
                     should_notify = False
                 else:
-                    time_since_last = datetime.now() - last_time
-                    is_new_data = (data_timestamp != last_data_ts) if (data_timestamp and last_data_ts) else True
-                    
-                    if time_since_last < timedelta(hours=COOLDOWN_HOURS):
-                        # Within cooldown: Only notify if it's a significant move since last alert (>= RENOTIFY_THRESHOLD)
-                        if abs(current_value - last_value) >= RENOTIFY_THRESHOLD:
-                            should_notify = True
-                            print(f"[Push] Significant change detected for {notif_key}: {last_value:.2f}% -> {current_value:.2f}%")
-                        else:
-                            should_notify = False
+                    is_same_bucket = (normalized_data_ts == last_data_ts) if (normalized_data_ts and last_data_ts) else False
+                    if is_same_bucket:
+                        should_notify = abs(current_value - last_value) >= RENOTIFY_THRESHOLD
                     else:
-                        # After cooldown: Re-notify if still above threshold and we have newer data
-                        should_notify = is_new_data
-                        if should_notify:
-                            print(f"[Push] {COOLDOWN_HOURS}h cooldown expired for {notif_key}, sending reminder.")
+                        should_notify = True
 
             
             if should_notify:
                 cls._notified_stocks[notif_key] = {
                     "value": current_value,
                     "timestamp": datetime.now(),
-                    "data_timestamp": data_timestamp
+                    "data_timestamp": normalized_data_ts
                 }
                 # Log to DB
                 await cls._log_notification(
