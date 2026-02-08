@@ -326,7 +326,7 @@ class PushNotificationService:
                     "body": log.body,
                     "tag": log.tag,
                     "value": log.value,
-                    "timestamp": log.timestamp.isoformat() if log.timestamp else None
+                    "timestamp": (log.timestamp.isoformat() + "Z") if log.timestamp else None
                 }
                 for log in logs
             ]
