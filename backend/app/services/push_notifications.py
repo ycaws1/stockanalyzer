@@ -208,9 +208,16 @@ class PushNotificationService:
                 last_time = last_record["timestamp"]
                 last_data_ts = last_record.get("data_timestamp")
                 
-                # Check for identical data (delta check for floats)
-                # Note: if last_data_ts is None (loaded from DB), we skip this check and rely on value/time
-                is_identical_data = (abs(current_value - last_value) < 0.001) and (normalized_data_ts == last_data_ts) if last_data_ts else False
+                # Check for identical data
+                is_identical_value = abs(current_value - last_value) < 0.001
+                
+                if last_data_ts and normalized_data_ts:
+                     # Strict check: Same value AND same data source timestamp
+                    is_identical_data = is_identical_value and (normalized_data_ts == last_data_ts)
+                else:
+                    # Fallback: If loaded from DB (no data_timestamp) or input has no timestamp,
+                    # rely on strict value check. This prevents duplicates on server restart.
+                    is_identical_data = is_identical_value
                 
                 if is_identical_data:
                     should_notify = False
