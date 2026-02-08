@@ -13,6 +13,33 @@
     gap: 0.5rem;
 }
 
+.headerRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.headerRow .title {
+    margin-bottom: 0;
+}
+
+.clearHistoryButton {
+    padding: 0.65rem 0.9rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    background: transparent;
+    color: var(--foreground);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.clearHistoryButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .filterBar {
     display: grid;
     grid-template-columns: 140px 1fr auto auto;
@@ -180,6 +207,15 @@
 }
 
 @media (max-width: 720px) {
+    .headerRow {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .clearHistoryButton {
+        width: 100%;
+    }
+
     .filterBar {
         grid-template-columns: 1fr;
     }

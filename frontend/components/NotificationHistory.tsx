@@ -19,6 +19,7 @@ export default function NotificationHistory() {
     const [error, setError] = useState<string | null>(null);
     const [filterTicker, setFilterTicker] = useState('');
     const [appliedTicker, setAppliedTicker] = useState('');
+    const [isClearing, setIsClearing] = useState(false);
 
     useEffect(() => {
         fetchHistory('');
@@ -74,11 +75,36 @@ export default function NotificationHistory() {
         fetchHistory('');
     };
 
+    const handleClearHistory = async () => {
+        try {
+            setIsClearing(true);
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const response = await fetch(`${apiUrl}/push/clear-history`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to clear history');
+            await fetchHistory(appliedTicker);
+        } catch (err) {
+            console.error('Error clearing notification history:', err);
+            setError('Could not clear notification history.');
+        } finally {
+            setIsClearing(false);
+        }
+    };
+
     return (
         <div className={styles.container}>
-            <h1 className={styles.title}>
-                <span>🔔</span> Notification History
-            </h1>
+            <div className={styles.headerRow}>
+                <h1 className={styles.title}>
+                    <span>🔔</span> Notification History
+                </h1>
+                <button
+                    className={styles.clearHistoryButton}
+                    type="button"
+                    onClick={handleClearHistory}
+                    disabled={loading || isClearing || history.length === 0}
+                >
+                    {isClearing ? 'Clearing...' : 'Clear History'}
+                </button>
+            </div>
 
             <form className={styles.filterBar} onSubmit={handleApplyFilter}>
                 <label className={styles.filterLabel} htmlFor="ticker-filter">Filter by ticker</label>
