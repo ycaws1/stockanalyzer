@@ -31,6 +31,7 @@ export function usePushNotifications() {
     // Check if push notifications are supported and handle permission
     useEffect(() => {
         const checkAndRequestPermission = async () => {
+            console.log('[usePushNotifications] Using API_URL:', API_URL);
             const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
             // Detect if running as PWA (standalone mode)

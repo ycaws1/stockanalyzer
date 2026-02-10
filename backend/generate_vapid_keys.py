@@ -34,7 +34,7 @@ if __name__ == "__main__":
     print("\nAdd these to your backend/.env file:\n")
     print(f"VAPID_PUBLIC_KEY={public_key}")
     print(f"VAPID_PRIVATE_KEY={private_key}")
-    print(f"VAPID_SUBJECT=mailto:admin@stockanalyzer.local")
+    print(f"VAPID_SUBJECT=mailto:admin@stockanalyzer-bay.vercel.app")
     print("\n" + "="*60)
     print("\nAlso add this to your frontend/.env.local file:\n")
     print(f"NEXT_PUBLIC_VAPID_KEY={public_key}")

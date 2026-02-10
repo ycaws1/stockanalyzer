@@ -15,7 +15,7 @@ export default function Dashboard() {
     const [adding, setAdding] = useState(false);
     const [sortMethod, setSortMethod] = useState<'default' | 'marketCap' | 'change' | 'sentiment' | 'composite'>('change');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-    const [trendView, setTrendView] = useState<'1H' | '1D'>('1D');
+    const [trendView, setTrendView] = useState<'1D'>('1D');
     const [allExpanded, setAllExpanded] = useState<boolean | undefined>(undefined);
     const pushNotifications = usePushNotifications();
 
@@ -39,7 +39,8 @@ export default function Dashboard() {
         }
         setLoading(true);
 
-        const intervalParam = trendView === '1H' ? '1h' : '1d';
+        // const intervalParam = trendView === '1H' ? '1h' : '1d';
+        const intervalParam = '1d';
 
         try {
             // Try fetching all cached stocks at once
@@ -312,7 +313,7 @@ export default function Dashboard() {
                         {/* Trend Controls */}
                         <select
                             value={trendView}
-                            onChange={(e) => setTrendView(e.target.value as '1H' | '1D')}
+                            onChange={(e) => setTrendView(e.target.value as '1D')}
                             style={{
                                 background: 'rgba(255,255,255,0.05)',
                                 color: 'var(--text-muted)',
@@ -321,8 +322,8 @@ export default function Dashboard() {
                                 borderRadius: '6px',
                                 outline: 'none'
                             }}
+                            disabled
                         >
-                            <option value="1H">Hourly Trend (1H)</option>
                             <option value="1D">Daily Trend (1D)</option>
                         </select>
 
@@ -485,8 +486,8 @@ export default function Dashboard() {
                                 <StockCard
                                     data={stock}
                                     forceExpanded={allExpanded}
-                                    trendPeriod={trendView === '1H' ? '5d' : '1mo'}
-                                    trendInterval={trendView === '1H' ? '1h' : '1d'}
+                                    trendPeriod='1mo'
+                                    trendInterval='1d'
                                 />
                             </div>
                         ))}
