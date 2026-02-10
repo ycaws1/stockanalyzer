@@ -282,7 +282,8 @@ class PushNotificationService:
                 except WebPushException as e:
                     print(f"[Push] Failed to send: {e}")
                     # If subscription is invalid (410 Gone), mark for removal
-                    if e.response and e.response.status_code == 410:
+                    if e.response and (e.response.status_code == 410 or e.response.status_code == 403):
+                        print(f"[Push] Subscription invalid (Status {e.response.status_code}), removing...")
                         failed_subs.append(sub)
                 except Exception as e:
                     print(f"[Push] Error: {e}")
